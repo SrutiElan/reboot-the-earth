@@ -2,6 +2,14 @@
 
 FastAPI and PostGIS service for Reboot the Earth.
 
+The repository root includes Docker Compose services for PostGIS, the OFO data importer, this backend, and the Next.js frontend. From the repository root, run:
+
+```bash
+docker compose up --build
+```
+
+The frontend is available at `http://localhost:3000`, the API at `http://localhost:8000`, and PostgreSQL/PostGIS at `localhost:5432`. The OFO importer runs after PostGIS is healthy and skips tables that already exist. To rebuild the imported tables, run the importer manually with `--replace`.
+
 ## Run locally
 
 From this directory, create and activate a virtual environment, then install the dependencies:
@@ -41,3 +49,8 @@ The API is available at `http://localhost:8000`. Interactive documentation is av
 ```text
 GET /api/trees/nearby?longitude=-121.5&latitude=38.5&radius_m=100&max_height_m=10
 ```
+
+The read-only SQL console is available at `http://localhost:3000/data/sql`. It sends
+`POST /api/sql/query` with `{ "sql": "SELECT ..." }` and returns dynamic columns and rows.
+Only one `SELECT` or `WITH` statement is accepted; the API rejects writes, applies a five-second
+statement timeout, and caps the response at 1,000 rows.

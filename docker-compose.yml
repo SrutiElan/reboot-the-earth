@@ -10,10 +10,56 @@ services:
     volumes:
       - postgis_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d reboot_the_earth"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-reboot_the_earth}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  ofo-import:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgis:5432/reboot_the_earth
+    depends_on:
+      postgis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "scripts/import_ofo.py"]
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgis:5432/reboot_the_earth
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      ofo-import:
+        condition: service_completed_successfully
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
+
 volumes:
   postgis_data:
+  frontend_node_modules:
+  frontend_next:

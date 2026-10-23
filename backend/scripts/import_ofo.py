@@ -4,7 +4,7 @@ from pathlib import Path
 
 import geopandas as gpd
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -40,6 +40,10 @@ def import_dataset(engine, filename: str, layer: str, table: str, index: str, if
     source = DATA_DIR / filename
     if not source.exists():
         raise FileNotFoundError(f"Missing OFO data file: {source}")
+
+    if if_exists == "fail" and inspect(engine).has_table(table):
+        print(f"Skipped {table}; table already exists")
+        return
 
     data = gpd.read_file(source, layer=layer)
     if data.crs is None:
