@@ -1,26 +1,177 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-sans: var(--font-noto-sans), system-ui, sans-serif;
+  --font-mono: var(--font-noto-mono), ui-monospace, monospace;
+  --font-heading: var(--font-sans);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-selected: var(--selected);
+
+  /* Dataset kinds: drone missions are teal squares, ground plots are orange circles. */
+  --color-drone: var(--drone);
+  --color-drone-ink: var(--drone-ink);
+  --color-drone-tint: var(--drone-tint);
+  --color-ground: var(--ground);
+  --color-ground-ink: var(--ground-ink);
+  --color-ground-tint: var(--ground-tint);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }
 
-@media (prefers-color-scheme: dark) {
+:root {
+  --nav-h: 70px;
+  --radius: 0.5rem;
+
+  --background: #ffffff;
+  --foreground: #1b2420;
+  --surface: #f5f7f6;
+  --card: #ffffff;
+  --card-foreground: #1b2420;
+  --popover: #ffffff;
+  --popover-foreground: #1b2420;
+  --primary: #006880;
+  --primary-hover: #00576b;
+  --primary-foreground: #ffffff;
+  --secondary: #edf1ef;
+  --secondary-foreground: #1b2420;
+  --muted: #edf1ef;
+  --muted-foreground: #5c6964;
+  --accent: #edf1ef;
+  --accent-foreground: #1b2420;
+  --destructive: #b42318;
+  --border: #dce2df;
+  --input: #cdd5d1;
+  --ring: #006880;
+  --selected: #e8f2f4;
+
+  --drone: #006880;
+  --drone-ink: #006880;
+  --drone-tint: #e3eff2;
+  --ground: #d9731a;
+  --ground-ink: #a4530f;
+  --ground-tint: #fbeee2;
+}
+
+/* Dark values follow the OFO site's dark theme (#23252f body, #282a36 navbar). */
+.dark {
+  --background: #23252f;
+  --foreground: #eef0ea;
+  --surface: #282b36;
+  --card: #2a2d38;
+  --card-foreground: #eef0ea;
+  --popover: #2a2d38;
+  --popover-foreground: #eef0ea;
+  --primary: #0f7f99;
+  --primary-hover: #138ea9;
+  --primary-foreground: #ffffff;
+  --secondary: #323543;
+  --secondary-foreground: #eef0ea;
+  --muted: #323543;
+  --muted-foreground: #a6abb7;
+  --accent: #323543;
+  --accent-foreground: #eef0ea;
+  --destructive: #f97066;
+  --border: #3a3e4d;
+  --input: #474b5b;
+  --ring: #6cc3d5;
+  --selected: #24394a;
+
+  --drone: #4fb0c6;
+  --drone-ink: #7fcadb;
+  --drone-tint: rgb(79 176 198 / 0.16);
+  --ground: #ee8f3e;
+  --ground-ink: #f3a868;
+  --ground-tint: rgb(238 143 62 / 0.16);
+}
+
+@media (max-width: 991.98px) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --nav-h: 50px;
   }
 }
 
-body {
-  background: var(--background);
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* Leaflet, restyled to match the catalog. */
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: var(--surface);
+}
+.leaflet-tooltip {
+  font: 500 12px/1.4 var(--font-sans);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.08);
+  padding: 4px 8px;
+}
+.leaflet-tooltip-top::before {
+  border-top-color: var(--border);
+}
+.leaflet-bar a,
+.leaflet-bar a:hover {
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--popover);
+  border-bottom-color: var(--border);
+}
+.leaflet-bar {
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+.leaflet-control-attribution {
+  font-size: 11px;
+  background: color-mix(in srgb, var(--background) 80%, transparent) !important;
+  color: var(--muted-foreground) !important;
+}
+.leaflet-control-attribution a {
+  color: inherit !important;
+}
+.ofo-cluster {
+  background: none !important;
+  border: none !important;
 }
