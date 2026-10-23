@@ -19,8 +19,8 @@ export function AssistantView() {
             What are you looking for?
           </h1>
           <p className="max-w-[60ch] text-[15px] leading-relaxed text-pretty text-muted-foreground">
-            Describe the data you need. I&apos;ll find it in the catalog and open it on the data page with the right
-            filters applied.
+            Ask about missions, plots or individual trees. I&apos;ll query the database, check the results and show
+            the returned data alongside the map.
           </p>
         </div>
         <div className="flex flex-col gap-3">

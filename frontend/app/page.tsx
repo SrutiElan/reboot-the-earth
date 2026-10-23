@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// The prototype only covers the data section of the OFO site.
+// Forest data is the application landing page.
 export default function Home() {
   redirect("/data");
 }

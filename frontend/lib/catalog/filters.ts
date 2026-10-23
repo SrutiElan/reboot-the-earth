@@ -1,4 +1,4 @@
-import { catalog, type Bounds, type Dataset } from ".";
+import type { Catalog, Bounds, Dataset } from ".";
 
 export interface Filters {
   yFrom: string;
@@ -80,7 +80,7 @@ export const FILTER_SECTIONS: FilterSection[] = [
     key: "aircraft",
     label: "Aircraft",
     anyLabel: "Any aircraft",
-    options: catalog.aircraft.map((a) => ({ value: a, label: a })),
+    options: [],
   },
   { type: "divider" },
   {
@@ -94,7 +94,7 @@ export const FILTER_SECTIONS: FilterSection[] = [
     type: "switch",
     key: "noWithheld",
     label: "Exclude withheld missions",
-    description: "Hide the ~20% of missions OFO reserves as test data for model evaluation.",
+    description: "Hide missions marked as withheld from training in the source data.",
     chip: "Excluding withheld",
   },
 ];
@@ -131,9 +131,9 @@ export function filterChips(f: Filters): Chip[] {
   return chips;
 }
 
-function passes(d: Dataset, f: Filters, q: string): boolean {
-  if (f.yFrom && d.year < +f.yFrom) return false;
-  if (f.yTo && d.year > +f.yTo) return false;
+function passes(d: Dataset, f: Filters, q: string, catalog: Catalog): boolean {
+  if (f.yFrom && (d.year === null || d.year < +f.yFrom)) return false;
+  if (f.yTo && (d.year === null || d.year > +f.yTo)) return false;
   if (f.overlap && !d.overlaps.length) return false;
   if (q && !(d.name.toLowerCase().includes(q) || d.site.toLowerCase().includes(q) || d.id.includes(q))) {
     return false;
@@ -148,16 +148,17 @@ function passes(d: Dataset, f: Filters, q: string): boolean {
       if (f.alt === "mid" && (d.altitudeM <= 80 || d.altitudeM > 110)) return false;
       if (f.alt === "high" && d.altitudeM <= 110) return false;
     }
-    if (f.area === "s" && d.areaHa >= 10) return false;
-    if (f.area === "m" && (d.areaHa < 10 || d.areaHa > 50)) return false;
-    if (f.area === "l" && d.areaHa <= 50) return false;
+    if (f.area && d.areaHa === null) return false;
+    if (f.area === "s" && d.areaHa !== null && d.areaHa >= 10) return false;
+    if (f.area === "m" && d.areaHa !== null && (d.areaHa < 10 || d.areaHa > 50)) return false;
+    if (f.area === "l" && d.areaHa !== null && d.areaHa <= 50) return false;
     if (f.noWithheld && d.withheld) return false;
     return true;
   }
   // Drone-only filters keep the ground plots covered by a matching mission.
   if (f.camera || f.aircraft || f.alt || f.area) {
     const droneOnly = { ...f, overlap: false, yFrom: "", yTo: "" };
-    return d.overlaps.some((id) => passes(catalog.byId(id)!, droneOnly, ""));
+    return d.overlaps.some((id) => { const mission = catalog.byId(id); return !!mission && passes(mission, droneOnly, "", catalog); });
   }
   return true;
 }
@@ -169,14 +170,14 @@ export interface Query {
   ids?: Set<string> | null;
 }
 
-export function filterDatasets({ filters, query = "", kind = "all", ids = null }: Query): Dataset[] {
+export function filterDatasets(catalog: Catalog, { filters, query = "", kind = "all", ids = null }: Query): Dataset[] {
   const q = query.trim().toLowerCase();
   return catalog.all.filter(
-    (d) => (kind === "all" || d.kind === kind) && (!ids || ids.has(d.id)) && passes(d, filters, q),
+    (d) => (kind === "all" || d.kind === kind) && (!ids || ids.has(d.id)) && passes(d, filters, q, catalog),
   );
 }
 
 export function inBounds(d: Dataset, b: Bounds | null) {
   if (!b) return true;
-  return d.lat >= b.south && d.lat <= b.north && d.lng >= b.west && d.lng <= b.east;
+  return d.lat !== null && d.lng !== null && d.lat >= b.south && d.lat <= b.north && d.lng >= b.west && d.lng <= b.east;
 }

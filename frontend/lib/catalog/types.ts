@@ -1,41 +1,41 @@
-// Shapes mirror what the FastAPI backend will return (see design handoff README,
-// "Data needed from the backend").
+// Actual records returned by the FastAPI catalog endpoint.
 
+import type { Geometry } from "geojson";
 export type DatasetKind = "drone" | "ground";
 
 interface DatasetBase {
   id: string;
+  sourceId: string;
   name: string;
   site: string;
-  /** ISO date, YYYY-MM-DD */
+  /** Source date precision is preserved: YYYY, YYYY-MM, or YYYY-MM-DD. */
   date: string;
-  year: number;
-  /** Center point. Drone footprints are approximated as boxes around it. */
-  lat: number;
-  lng: number;
-  /** Ids from the precomputed dataset_overlaps table */
+  year: number | null;
+  /** Actual centroid/location and source footprint. */
+  lat: number | null;
+  lng: number | null;
+  geometry: Geometry | null;
+  dateApproximate: boolean;
+  /** Real footprint intersections computed by PostGIS. */
   overlaps: string[];
 }
 
 export interface DroneMission extends DatasetBase {
   kind: "drone";
-  areaHa: number;
+  areaHa: number | null;
   altitudeM: number | null;
-  cameraPitch: number;
-  imageCount: number;
-  aircraft: string;
+  cameraPitch: number | null;
+  imageCount: number | null;
+  aircraft: string | null;
   withheld: boolean;
   oblique: boolean;
-  /** Half-height and half-width of the footprint box, in degrees */
-  dLat: number;
-  dLng: number;
 }
 
 export interface GroundPlot extends DatasetBase {
   kind: "ground";
   trees: number;
-  plotHa: number;
-  species: string;
+  plotHa: number | null;
+  species: string | null;
 }
 
 export type Dataset = DroneMission | GroundPlot;

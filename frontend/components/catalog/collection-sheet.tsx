@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { catalog, stacUrl } from "@/lib/catalog";
+import type { Dataset } from "@/lib/catalog";
+import { datasetFileUrl, downloadRows } from "@/lib/api";
 import { plural } from "@/lib/catalog/format";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -10,29 +11,14 @@ import { KindMark } from "./kind-mark";
 import { useCopy } from "./use-copy";
 
 export function CollectionSheet() {
-  const { sheet, setSheet, collection, toggleCollection } = useCatalog();
+  const { catalog, sheet, setSheet, collection, toggleCollection } = useCatalog();
   const [copied, copy] = useCopy();
-  const items = collection.map((id) => catalog.byId(id)!);
+  const items = collection.map((id) => catalog.byId(id)).filter((d): d is Dataset => !!d);
 
-  const python = `import pystac
-
-ids = ${JSON.stringify(collection)}
-items = [
-    pystac.Item.from_file(f"https://stac.cyverse.org/ofo/items/{i}.json")
-    for i in ids
-]`;
+  const python = `import requests\n\nurls = ${JSON.stringify(items.map((d) => datasetFileUrl(d.id, "metadata.json")), null, 2)}\nitems = [requests.get(url).json() for url in urls]`;
 
   const downloadManifest = () => {
-    const quote = (s: string) => `"${s.replaceAll('"', '""')}"`;
-    const csv = [
-      "id,name,type,site,date,stac_url",
-      ...items.map((d) => [d.id, quote(d.name), d.kind, quote(d.site), d.date, stacUrl(d)].join(",")),
-    ].join("\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    a.download = "ofo-collection.csv";
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadRows(items.map((d) => ({ id: d.id, name: d.name, type: d.kind, project: d.site, date: d.date, metadata_url: datasetFileUrl(d.id, "metadata.json") })), ["id", "name", "type", "project", "date", "metadata_url"], "ofo-collection.csv");
   };
 
   return (

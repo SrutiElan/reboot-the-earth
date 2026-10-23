@@ -1,9 +1,4 @@
-import re
-from datetime import date, datetime, time
-from decimal import Decimal
-from time import perf_counter
 from typing import Any
-from uuid import UUID
 
 from fastapi import FastAPI
 from fastapi import Depends, HTTPException, Query
@@ -15,16 +10,24 @@ from sqlalchemy.orm import Session
 
 try:
     from .db import get_db
+    from .catalog_api import lifespan, router as catalog_router
+    from .assistant import router as assistant_router
+    from .sql_service import QueryError, execute_query
 except ImportError:  # Supports running `uvicorn main:app` from this directory.
     from db import get_db
+    from catalog_api import lifespan, router as catalog_router
+    from assistant import router as assistant_router
+    from sql_service import QueryError, execute_query
 
 
 app = FastAPI(
     title="Reboot the Earth API",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
-MAX_SQL_ROWS = 1_000
+app.include_router(catalog_router)
+app.include_router(assistant_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -136,89 +139,9 @@ def nearby_trees(
         ) from exc
 
 
-def _json_value(value: Any) -> Any:
-    """Convert common PostgreSQL values into JSON-safe values for the UI."""
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, (datetime, date, time)):
-        return value.isoformat()
-    if isinstance(value, (Decimal, UUID)):
-        return str(value)
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return bytes(value).hex()
-    return str(value)
-
-
-def _read_only_sql(sql: str) -> str:
-    """Validate a single read-only query and wrap it with a hard row limit."""
-    normalized = sql.strip()
-    if normalized.endswith(";"):
-        normalized = normalized[:-1].rstrip()
-
-    if not normalized:
-        raise HTTPException(status_code=400, detail="SQL query cannot be empty")
-    if ";" in normalized:
-        raise HTTPException(status_code=400, detail="Only one SQL statement is allowed")
-    if not re.match(r"^(SELECT|WITH)\b", normalized, flags=re.IGNORECASE):
-        raise HTTPException(
-            status_code=400,
-            detail="Only read-only SELECT or WITH queries are allowed",
-        )
-
-    blocked = (
-        "INSERT",
-        "UPDATE",
-        "DELETE",
-        "DROP",
-        "ALTER",
-        "TRUNCATE",
-        "CREATE",
-        "GRANT",
-        "REVOKE",
-        "COPY",
-        "CALL",
-        "DO",
-        "VACUUM",
-        "SET",
-        "SHOW",
-        "BEGIN",
-        "COMMIT",
-        "ROLLBACK",
-    )
-    blocked_pattern = r"\b(?:" + "|".join(blocked) + r")\b"
-    if re.search(blocked_pattern, normalized, flags=re.IGNORECASE):
-        raise HTTPException(status_code=400, detail="The query contains a blocked SQL operation")
-
-    # The outer LIMIT bounds the response even when the submitted query has no LIMIT.
-    return f"SELECT * FROM ({normalized}) AS user_query LIMIT {MAX_SQL_ROWS + 1}"
-
-
 @app.post("/api/sql/query", response_model=SQLQueryResponse, tags=["sql"])
-def run_sql_query(payload: SQLQueryRequest, db: Session = Depends(get_db)) -> SQLQueryResponse:
-    query = _read_only_sql(payload.sql)
-    started = perf_counter()
-
+def run_sql_query(payload: SQLQueryRequest) -> SQLQueryResponse:
     try:
-        with db.begin():
-            db.execute(text("SET TRANSACTION READ ONLY"))
-            db.execute(text("SET LOCAL statement_timeout = '5000ms'"))
-            result = db.execute(text(query))
-            columns = list(result.keys())
-            raw_rows = result.mappings().fetchmany(MAX_SQL_ROWS + 1)
-    except SQLAlchemyError as exc:
-        detail = str(exc.orig or exc).splitlines()[0]
-        raise HTTPException(status_code=400, detail=f"Query failed: {detail}") from exc
-
-    truncated = len(raw_rows) > MAX_SQL_ROWS
-    rows = [
-        {column: _json_value(row.get(column)) for column in columns}
-        for row in raw_rows[:MAX_SQL_ROWS]
-    ]
-
-    return SQLQueryResponse(
-        columns=columns,
-        rows=rows,
-        row_count=len(rows),
-        truncated=truncated,
-        elapsed_ms=round((perf_counter() - started) * 1000, 2),
-    )
+        return SQLQueryResponse(**execute_query(payload.sql))
+    except QueryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

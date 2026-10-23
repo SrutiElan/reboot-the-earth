@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react";
-import { catalog } from "@/lib/catalog";
 import { filterChips, type KindFilter } from "@/lib/catalog/filters";
 import { plural } from "@/lib/catalog/format";
 import { ASSISTANT_NAME } from "@/lib/catalog/assistant";
@@ -21,7 +20,7 @@ const KINDS: { value: KindFilter; label: string }[] = [
 ];
 
 function PlaceSearch() {
-  const { query, setQuery, requestFit } = useCatalog();
+  const { catalog, query, setQuery, requestFit } = useCatalog();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);

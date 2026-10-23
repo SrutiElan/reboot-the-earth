@@ -1,12 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useCatalog } from "./catalog-provider";
 import { CatalogToolbar } from "./catalog-toolbar";
 import { ResultsTable } from "./results-table";
 import { AssistantDock } from "./assistant-dock";
 import { FiltersSheet } from "./filters-sheet";
+import { QueryResults } from "./query-results";
 
 // Leaflet touches window on import, so the map only loads in the browser.
 const CatalogMap = dynamic(() => import("./catalog-map"), { ssr: false });
@@ -27,7 +28,9 @@ function MapLegend() {
 }
 
 export function CatalogView() {
-  const { dockOpen } = useCatalog();
+  const { dockOpen, catalogLoading, catalogError, reloadCatalog, activeAnswer } = useCatalog();
+  const [hiddenAnswer, setHiddenAnswer] = useState<typeof activeAnswer>(null);
+  const showQuery = activeAnswer !== hiddenAnswer;
 
   return (
     <div className="relative flex h-[calc(100dvh-var(--nav-h))] min-h-[560px]">
@@ -35,11 +38,17 @@ export function CatalogView() {
         <Suspense>
           <CatalogToolbar />
         </Suspense>
+        {catalogLoading && <p className="px-5 py-2 text-sm text-muted-foreground">Loading live catalog…</p>}
+        {catalogError && <p role="alert" className="px-5 py-2 text-sm text-red-700">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry</button></p>}
         <div className="relative isolate min-h-[220px] flex-[0_0_42%] border-y bg-surface">
           <CatalogMap />
           <MapLegend />
         </div>
-        <ResultsTable />
+        {activeAnswer?.data && <div className="flex shrink-0 gap-3 border-b px-5 py-2 text-sm">
+          <button type="button" aria-pressed={showQuery} onClick={() => setHiddenAnswer(null)} className={showQuery ? "font-semibold text-primary" : "text-muted-foreground"}>Query data ({activeAnswer.data.row_count})</button>
+          <button type="button" aria-pressed={!showQuery} onClick={() => setHiddenAnswer(activeAnswer)} className={!showQuery ? "font-semibold text-primary" : "text-muted-foreground"}>Catalog datasets</button>
+        </div>}
+        {activeAnswer?.data && showQuery ? <QueryResults data={activeAnswer.data} /> : <ResultsTable />}
       </div>
       {dockOpen && <AssistantDock />}
       <FiltersSheet />

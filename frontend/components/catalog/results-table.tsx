@@ -21,7 +21,7 @@ const num = (d: Dataset, key: SortKey): number | string => {
     case "date":
       return d.date;
     case "area":
-      return d.kind === "drone" ? d.areaHa : d.plotHa;
+      return (d.kind === "drone" ? d.areaHa : d.plotHa) ?? -1;
     case "alt":
       return d.kind === "drone" ? (d.altitudeM ?? -1) : -1;
     case "overlaps":
@@ -158,7 +158,7 @@ export function ResultsTable() {
                   <td className={cell}>
                     <KindBadge kind={d.kind} />
                   </td>
-                  <td className={cell}>{d.date}</td>
+                  <td className={cell} title={d.dateApproximate ? "Approximate survey date from source data" : undefined}>{d.dateApproximate ? "≈ " : ""}{d.date || "—"}</td>
                   <td className={cn(cell, "text-right")}>{areaLabel(d)}</td>
                   <td className={cn(cell, "text-right")}>
                     {d.kind === "drone" && d.altitudeM ? `${d.altitudeM} m` : "—"}

@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import L from "leaflet";
 import type { Dataset } from "@/lib/catalog";
 import { useCatalog } from "./catalog-provider";
-import { datasetBounds, datasetShape, mapColors, setEmphasis, TILES, type DatasetLayer } from "./map-style";
+import { datasetBounds, datasetShape, hasLocation, mapColors, setEmphasis, TILES, type DatasetLayer } from "./map-style";
 
 const DEFAULT_VIEW = { center: [39.0, -121.2] as [number, number], zoom: 6 };
 const DETAIL_ZOOM = 11;
@@ -25,7 +25,8 @@ function clusterHtml(drones: number, grounds: number, c: ReturnType<typeof mapCo
 }
 
 export default function CatalogMap() {
-  const { results, setBounds, getMapView, saveMapView, fitToken, hoverId, setHoverId } = useCatalog();
+  const { results: allResults, setBounds, getMapView, saveMapView, fitToken, hoverId, setHoverId } = useCatalog();
+  const results = useMemo(() => allResults.filter(hasLocation), [allResults]);
   const { resolvedTheme } = useTheme();
   const router = useRouter();
   const el = useRef<HTMLDivElement>(null);
@@ -90,7 +91,7 @@ export default function CatalogMap() {
     shapes.current.clear();
 
     if (m.getZoom() < DETAIL_ZOOM) {
-      const clusters: { pt: L.Point; items: Dataset[] }[] = [];
+      const clusters: { pt: L.Point; items: (Dataset & { lat: number; lng: number })[] }[] = [];
       for (const d of results) {
         const pt = m.latLngToLayerPoint([d.lat, d.lng]);
         const hit = clusters.find((cl) => cl.pt.distanceTo(pt) < CLUSTER_PX);

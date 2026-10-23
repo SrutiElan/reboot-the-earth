@@ -4,8 +4,9 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useState } from "react";
 import { ChevronRightIcon, DownloadIcon } from "lucide-react";
-import { catalog, stacUrl, type Dataset } from "@/lib/catalog";
-import { datasetFiles, formatDate, formatSize, plural } from "@/lib/catalog/format";
+import type { Dataset } from "@/lib/catalog";
+import { API_BASE, datasetFileUrl } from "@/lib/api";
+import { datasetFiles, formatDate, plural } from "@/lib/catalog/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useCatalog } from "./catalog-provider";
@@ -20,39 +21,29 @@ function details(d: Dataset): { k: string; v: string }[] {
     return [
       { k: "Collected", v: formatDate(d.date) },
       { k: "Site", v: d.site },
-      { k: "Aircraft", v: d.aircraft },
-      { k: "Area", v: `${d.areaHa} ha` },
+      { k: "Aircraft", v: d.aircraft ?? "—" },
+      { k: "Area", v: d.areaHa === null ? "—" : `${d.areaHa} ha` },
       { k: "Altitude", v: d.altitudeM ? `${d.altitudeM} m` : "—" },
-      { k: "Camera pitch", v: `${d.cameraPitch}°` },
-      { k: "Images", v: d.imageCount.toLocaleString() },
+      { k: "Camera pitch", v: d.cameraPitch === null ? "—" : `${d.cameraPitch}°` },
+      { k: "Images", v: d.imageCount?.toLocaleString() ?? "—" },
       { k: "Training use", v: d.withheld ? "Withheld (test set)" : "Available" },
     ];
   }
   return [
-    { k: "Surveyed", v: formatDate(d.date) },
+    { k: "Surveyed", v: formatDate(d.date) + (d.dateApproximate ? " (approximate)" : "") },
     { k: "Site", v: d.site },
     { k: "Trees mapped", v: d.trees.toLocaleString() },
-    { k: "Plot area", v: `${d.plotHa} ha` },
-    { k: "Dominant species", v: d.species },
+    { k: "Plot area", v: d.plotHa === null ? "—" : `${d.plotHa} ha` },
+    { k: "Dominant species", v: d.species ?? "—" },
   ];
 }
 
 function pythonFor(d: Dataset) {
   return d.kind === "drone"
-    ? `import pystac
-
-item = pystac.Item.from_file(
-    "${stacUrl(d)}"
-)
-ortho = item.assets["orthomosaic"].href
-chm = item.assets["canopy-height-model"].href`
-    : `import pystac
-import geopandas as gpd
-
-item = pystac.Item.from_file(
-    "${stacUrl(d)}"
-)
-trees = gpd.read_file(item.assets["stem-map"].href)`;
+    ? `import requests\n\nmetadata = requests.get(\n    "${datasetFileUrl(d.id, "metadata.json")}", timeout=30\n).json()\nprint(metadata)`
+    : `import pandas as pd\nimport geopandas as gpd\n\ntrees = pd.read_csv(\n    "${datasetFileUrl(d.id, "trees.csv")}"
+)\nstems = gpd.read_file(\n    "${datasetFileUrl(d.id, "trees.geojson")}"
+)`;
 }
 
 function Panel({ title, action, children, className }: { title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
@@ -68,15 +59,17 @@ function Panel({ title, action, children, className }: { title: string; action?:
 }
 
 export function DatasetView({ id }: { id: string }) {
-  const d = catalog.byId(id)!;
-  const { collection, toggleCollection } = useCatalog();
-  const [tab, setTab] = useState<"python" | "stac">("python");
+  const { catalog, catalogLoading, catalogError, reloadCatalog, collection, toggleCollection } = useCatalog();
+  const d = catalog.byId(id);
+  const [tab, setTab] = useState<"python" | "json">("python");
   const [copied, copy] = useCopy();
+  if (catalogLoading) return <p className="p-8 text-muted-foreground">Loading dataset…</p>;
+  if (catalogError) return <p role="alert" className="p-8">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry</button></p>;
+  if (!d) return <p className="p-8">Dataset not found. <Link href="/data/catalog" className="underline">Return to catalog</Link></p>;
   const files = datasetFiles(d);
-  const total = files.reduce((a, f) => a + f.gb, 0);
-  const related = d.overlaps.map((x) => catalog.byId(x)!);
+  const related = d.overlaps.map((x) => catalog.byId(x)).filter((r): r is Dataset => !!r);
   const inCol = collection.includes(d.id);
-  const code = tab === "python" ? pythonFor(d) : stacUrl(d);
+  const code = tab === "python" ? pythonFor(d) : datasetFileUrl(d.id, "metadata.json");
 
   return (
     <div className="flex-1">
@@ -107,16 +100,15 @@ export function DatasetView({ id }: { id: string }) {
               <KindBadge kind={d.kind} long />
               {d.kind === "drone" && d.withheld && <WithheldBadge long />}
               <span>{d.site}</span>
-              <span>{formatDate(d.date)}</span>
+              <span>{formatDate(d.date)}{d.dateApproximate ? " (approximate)" : ""}</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" className="h-[38px] px-3.5" onClick={() => toggleCollection(d.id)}>
               {inCol ? "Remove from collection" : "Add to collection"}
             </Button>
-            <Button className="h-[38px] gap-2 px-4 hover:bg-primary-hover">
-              <DownloadIcon className="size-[15px]" />
-              Download all ({formatSize(total)})
+            <Button asChild className="h-[38px] gap-2 px-4 hover:bg-primary-hover">
+              <a href={`${API_BASE}/api/catalog/datasets/${d.id}/download`}><DownloadIcon className="size-[15px]" />Download records (ZIP)</a>
             </Button>
           </div>
         </header>
@@ -142,15 +134,15 @@ export function DatasetView({ id }: { id: string }) {
                       <div className="text-sm font-medium">{f.name}</div>
                       <div className="mt-px flex gap-2.5 text-xs text-muted-foreground tabular-nums">
                         <span>{f.format}</span>
-                        <span>{formatSize(f.gb)}</span>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" className="h-8 px-3" aria-label={`Download ${f.name}`}>
-                      Download
+                    <Button asChild variant="outline" size="sm" className="h-8 px-3" aria-label={`Download ${f.name}`}>
+                      <a href={f.url}>Download</a>
                     </Button>
                   </li>
                 ))}
               </ul>
+              {d.kind === "drone" && <p className="border-t px-5 py-3 text-xs text-muted-foreground">Available here: imported metadata and footprint. Imagery, orthomosaics and canopy height models are not included in this database.</p>}
             </Panel>
 
             <Panel
@@ -160,7 +152,7 @@ export function DatasetView({ id }: { id: string }) {
                   {(
                     [
                       ["python", "Python"],
-                      ["stac", "STAC URL"],
+                      ["json", "Metadata URL"],
                     ] as const
                   ).map(([k, label]) => (
                     <button

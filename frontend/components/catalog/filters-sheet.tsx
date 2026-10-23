@@ -1,6 +1,5 @@
 "use client";
 
-import { catalog } from "@/lib/catalog";
 import { FILTER_SECTIONS, filterChips, type FilterSection } from "@/lib/catalog/filters";
 import { plural } from "@/lib/catalog/format";
 import { Button } from "@/components/ui/button";
@@ -23,7 +22,7 @@ function SectionLabel({ children, htmlFor }: { children: React.ReactNode; htmlFo
 }
 
 function Section({ section }: { section: FilterSection }) {
-  const { filters, patchFilters } = useCatalog();
+  const { catalog, filters, patchFilters } = useCatalog();
 
   switch (section.type) {
     case "year-range":
@@ -91,7 +90,7 @@ function Section({ section }: { section: FilterSection }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ANY}>{section.anyLabel}</SelectItem>
-              {section.options.map((o) => (
+              {catalog.aircraft.map((a) => ({ value: a, label: a })).map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>

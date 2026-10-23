@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { catalog } from "@/lib/catalog";
+import { useCatalog } from "@/components/catalog/catalog-provider";
 import { ASSISTANT_NAME } from "@/lib/catalog/assistant";
 import { Button } from "@/components/ui/button";
 import { KindMark } from "@/components/catalog/kind-mark";
@@ -7,6 +9,7 @@ import { KindMark } from "@/components/catalog/kind-mark";
 const link = "font-medium text-primary underline underline-offset-[3px] hover:text-primary-hover dark:text-drone-ink";
 
 export default function DataLanding() {
+  const { catalog, catalogLoading, catalogError, reloadCatalog, treeCount } = useCatalog();
   return (
     <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-16 px-5 pt-16 pb-24">
       <section className="grid items-center gap-10 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
@@ -19,14 +22,16 @@ export default function DataLanding() {
           <p className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground tabular-nums">
             <span className="flex items-center gap-2">
               <KindMark kind="drone" />
-              {catalog.missions.length} drone missions
+              {catalogLoading ? "Loading…" : `${catalog.missions.length} drone missions`}
             </span>
             <span className="flex items-center gap-2">
               <KindMark kind="ground" />
-              {catalog.plots.length} ground plots
+              {catalogLoading ? "Loading…" : `${catalog.plots.length} ground plots`}
             </span>
-            <span>{catalog.siteNames.length} sites</span>
+            <span>{catalogLoading ? "Loading…" : `${catalog.siteNames.length} projects`}</span>
+            {treeCount !== null && <span>{treeCount.toLocaleString()} tree records</span>}
           </p>
+          {catalogError && <p role="alert" className="text-sm text-red-700">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry</button></p>}
           <div className="flex flex-wrap gap-2.5 pt-2">
             <Button asChild className="h-11 px-[22px] text-[15px] hover:bg-primary-hover">
               <Link href="/data/catalog">View data</Link>
@@ -59,9 +64,8 @@ export default function DataLanding() {
             Drone-based data
           </h2>
           <p className="text-sm leading-[1.7] text-pretty text-muted-foreground">
-            We host a database of &gt; 150 (and growing) drone-based forest imagery acquisitions, including raw images
-            and downstream products including orthomosaics, canopy height models, and individual tree detections. The
-            data can be browsed in our{" "}
+            Browse {catalog.missions.length || "the imported"} drone mission records with real collection metadata,
+            footprint boundaries and spatial links to ground plots in our{" "}
             <Link href="/data/catalog?kind=drone" className={link}>
               html map
             </Link>{" "}
@@ -88,9 +92,8 @@ export default function DataLanding() {
             Ground reference data
           </h2>
           <p className="text-sm leading-[1.7] text-pretty text-muted-foreground">
-            We host a large dataset of &gt; 150 traditional ground-based forest inventory plots with individual tree
-            locations mapped. These datasets generally fall within the footprint of an OFO drone-based dataset,
-            enabling calibration and validation of drone-based forest mapping workflows.{" "}
+            Explore {catalog.plots.length || "the imported"} ground inventory plots and {treeCount?.toLocaleString() ?? "their"} tree records,
+            including measured heights, species and stem locations. Download actual records or ask AI to query them.{" "}
             <Link href="/data/catalog?kind=ground" className={link}>
               Access the catalog.
             </Link>

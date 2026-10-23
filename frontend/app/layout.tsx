@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Noto_Sans, Noto_Sans_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -28,7 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-dvh flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider>
-            <SiteNavbar />
+            <Suspense fallback={<div className="h-[var(--nav-h)] bg-[#333]" />}><SiteNavbar /></Suspense>
             <main className="flex min-h-0 flex-1 flex-col">{children}</main>
           </TooltipProvider>
         </ThemeProvider>

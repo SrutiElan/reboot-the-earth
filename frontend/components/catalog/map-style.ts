@@ -20,18 +20,17 @@ export function mapColors(dark: boolean): MapColors {
     : { drone: "#006880", ground: "#d9731a", outline: "#ffffff", emphasis: "#1b2420" };
 }
 
-export type DatasetLayer = L.Rectangle | L.CircleMarker;
+export type DatasetLayer = L.GeoJSON | L.CircleMarker;
+
+export function hasLocation(d: Dataset): d is Dataset & { lat: number; lng: number } {
+  return d.lat !== null && d.lng !== null && Number.isFinite(d.lat) && Number.isFinite(d.lng);
+}
 
 export function datasetShape(d: Dataset, c: MapColors, strong = false): DatasetLayer {
-  if (d.kind === "drone") {
-    return L.rectangle(
-      [
-        [d.lat - d.dLat, d.lng - d.dLng],
-        [d.lat + d.dLat, d.lng + d.dLng],
-      ],
-      { color: c.drone, weight: strong ? 2.5 : 1.2, fillOpacity: strong ? 0.22 : 0.06 },
-    );
+  if (d.kind === "drone" && d.geometry) {
+    return L.geoJSON(d.geometry, { style: { color: c.drone, weight: strong ? 2.5 : 1.2, fillOpacity: strong ? 0.22 : 0.06 } });
   }
+  if (!hasLocation(d)) throw new Error("Dataset has no mapped location");
   return L.circleMarker([d.lat, d.lng], {
     radius: strong ? 8 : 6,
     color: strong ? c.emphasis : c.outline,
@@ -50,10 +49,10 @@ export function setEmphasis(layer: DatasetLayer, d: Dataset, c: MapColors, on: b
 export function datasetBounds(items: Dataset[]) {
   const b = L.latLngBounds([]);
   for (const d of items) {
-    if (d.kind === "drone") {
-      b.extend([d.lat - d.dLat, d.lng - d.dLng]);
-      b.extend([d.lat + d.dLat, d.lng + d.dLng]);
-    } else b.extend([d.lat, d.lng]);
+    if (d.geometry) {
+      const bounds = L.geoJSON(d.geometry).getBounds();
+      if (bounds.isValid()) b.extend(bounds);
+    } else if (hasLocation(d)) b.extend([d.lat, d.lng]);
   }
   return b;
 }
