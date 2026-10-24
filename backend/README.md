@@ -74,6 +74,11 @@ columns/sample rows. SQL errors and unusable/empty results feed back into bounde
 An empty result is verified once; explicit user constraints are never silently relaxed.
 The answer contains actual rows, SQL, attempt history, and validated dataset IDs for the map.
 
+Assistant replies default to English. A question clearly written in another language
+receives a reply in that language; an explicit response-language request takes priority.
+SQL-only, coordinate-only and otherwise ambiguous questions default to English.
+This also applies to clarifications and follow-up suggestions, independently on each turn.
+
 Startup creates the normalized `catalog_datasets` view and a `NOLOGIN` role `ofo_reader`.
 Both the SQL console and assistant use the same parsed SELECT-only executor, explicit
 table allowlist, read-only transaction and restricted role, with a 1,000-row / 5-second cap.

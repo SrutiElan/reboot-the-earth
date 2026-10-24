@@ -75,10 +75,10 @@ class QueryPipelineTests(unittest.TestCase):
             async def ainvoke(inner, inputs):
                 inner.calls += 1
                 if inner.calls == 1:
-                    return assistant.QueryPlan(sql="SELECT nonexistent_height FROM ofo_trees LIMIT 1", explanation="Query")
+                    return assistant.QueryPlan(response_language="English", sql="SELECT nonexistent_height FROM ofo_trees LIMIT 1", explanation="Query")
                 self.assertIn("nonexistent_height", inputs["attempts"])
                 self.assertIn("does not exist", inputs["attempts"])
-                return assistant.QueryPlan(sql="SELECT COUNT(*) AS tree_count FROM ofo_trees", explanation="Query")
+                return assistant.QueryPlan(response_language="English", sql="SELECT COUNT(*) AS tree_count FROM ofo_trees", explanation="Query")
         class Reviewer:
             async def ainvoke(inner, inputs):
                 self.assertGreater(json.loads(inputs["result"])["rows"][0]["tree_count"], 0)
@@ -93,7 +93,7 @@ class QueryPipelineTests(unittest.TestCase):
     def test_empty_data_retries_then_reports_empty(self):
         class Planner:
             async def ainvoke(inner, inputs):
-                return assistant.QueryPlan(sql="SELECT plot_id FROM ofo_trees WHERE height < 0", explanation="Query")
+                return assistant.QueryPlan(response_language="English", sql="SELECT plot_id FROM ofo_trees WHERE height < 0", explanation="Query")
         class Reviewer:
             async def ainvoke(inner, inputs):
                 return assistant.Review(decision="empty", feedback="No matching records", answer="No matching records", follow=[])
@@ -106,7 +106,7 @@ class QueryPipelineTests(unittest.TestCase):
     def test_retry_limit(self):
         class Planner:
             async def ainvoke(inner, inputs):
-                return assistant.QueryPlan(sql="SELECT nonexistent_height FROM ofo_trees", explanation="Query")
+                return assistant.QueryPlan(response_language="English", sql="SELECT nonexistent_height FROM ofo_trees", explanation="Query")
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only", "AI_MAX_ATTEMPTS": "3"}), patch.object(assistant, "build_chains", return_value=(Planner(), None)):
             events = self.stream_events("Query")
         self.assertEqual(events[-1]["answer"]["status"], "failed")
@@ -122,7 +122,7 @@ class QueryPipelineTests(unittest.TestCase):
                 async def ainvoke(inner, inputs):
                     inner.calls += 1
                     if inner.calls == 1:
-                        return assistant.QueryPlan(sql="SELECT COUNT(nonexistent_tree_id) AS tree_count FROM ofo_trees", explanation="Initial query")
+                        return assistant.QueryPlan(response_language="Chinese", sql="SELECT COUNT(nonexistent_tree_id) AS tree_count FROM ofo_trees", explanation="Initial query")
                     return await real_planner.ainvoke(inputs)
             return FirstQueryTypo(), reviewer
         with patch.object(assistant, "build_chains", side_effect=chains):
