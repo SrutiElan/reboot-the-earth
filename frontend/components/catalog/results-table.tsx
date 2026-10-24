@@ -140,24 +140,25 @@ export function ResultsTable({ showAll = false }: { showAll?: boolean }) {
                       className="data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                     />
                   </td>
-                  <td className="max-w-[300px] border-b border-border/60 px-3 py-2.5">
-                    <div className="flex items-center gap-1.5">
+                  <td className="w-[300px] max-w-[300px] min-w-[220px] overflow-hidden border-b border-border/60 px-3 py-2.5">
+                    <div className="flex min-w-0 items-center gap-1.5">
                       <a
+                        title={d.name}
                         href={href}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           router.push(href);
                         }}
-                        className="truncate font-medium text-foreground outline-none hover:underline focus-visible:underline"
+                        className="min-w-0 truncate font-medium text-foreground outline-none hover:underline focus-visible:underline"
                       >
                         {d.name}
                       </a>
                       {d.withheld && <WithheldBadge />}
                     </div>
-                    <div className="mt-0.5 flex gap-2.5 text-xs text-muted-foreground">
-                      <span>{d.id}</span>
-                      <span className="truncate">{d.site}</span>
+                    <div className="mt-0.5 flex min-w-0 gap-2.5 text-xs text-muted-foreground">
+                      <span className="shrink-0">{d.id}</span>
+                      <span className="min-w-0 truncate" title={d.site}>{d.site}</span>
                     </div>
                   </td>
                   <td className={cell}>

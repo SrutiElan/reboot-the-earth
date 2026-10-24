@@ -63,14 +63,14 @@ function Section({ section }: { section: FilterSection }) {
             value={filters[section.key] || ANY}
             onValueChange={(v) => v && patchFilters({ [section.key]: v === ANY ? "" : v })}
             className="grid w-full rounded-lg bg-muted p-[3px]"
-            style={{ gridTemplateColumns: `repeat(${section.options.length}, 1fr)` }}
+            style={{ gridTemplateColumns: `repeat(${section.options.length}, ${section.options.some((o) => o.label.length > 8) ? "auto" : "1fr"})` }}
             aria-label={section.label}
           >
             {section.options.map((o) => (
               <ToggleGroupItem
                 key={o.value || ANY}
                 value={o.value || ANY}
-                className="h-[30px] rounded-md! px-1 text-[13px] text-muted-foreground hover:bg-transparent data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-[0_1px_2px_rgba(0,0,0,0.1)] dark:data-[state=on]:bg-card"
+                className={cn("h-[30px] rounded-md! text-[13px] text-muted-foreground hover:bg-transparent data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-[0_1px_2px_rgba(0,0,0,0.1)] dark:data-[state=on]:bg-card", section.options.some((x) => x.label.length > 8) ? "px-3" : "px-1")}
               >
                 {o.label}
               </ToggleGroupItem>
