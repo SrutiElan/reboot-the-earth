@@ -367,6 +367,8 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       setQuery("");
       setKinds(ALL_KINDS);
       setActiveAnswer(null);
+      setAppliedIdx(-1);
+      requestFit();
     },
     results,
     visible,
