@@ -43,8 +43,10 @@ const COLUMNS: { key?: SortKey; label: string; align?: "right" }[] = [
   { key: "overlaps", label: "Overlaps" },
 ];
 
-export function ResultsTable() {
-  const { visible, mapReady, results, hoverId, setHoverId, collection, toggleCollection, clearAll } = useCatalog();
+export function ResultsTable({ showAll = false }: { showAll?: boolean }) {
+  const { visible: inMapArea, mapReady: boundsKnown, results, hoverId, setHoverId, collection, toggleCollection, clearAll } = useCatalog();
+  const visible = showAll ? results : inMapArea;
+  const mapReady = showAll || boundsKnown;
   const router = useRouter();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "date", dir: -1 });
 
@@ -62,17 +64,8 @@ export function ResultsTable() {
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" || key === "kind" ? 1 : -1 }));
 
-  const hidden = results.length - visible.length;
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-baseline gap-3 border-b px-5 py-2.5 text-[13px] text-muted-foreground">
-        <span>
-          <span className="font-medium text-foreground tabular-nums">{visible.length.toLocaleString()}</span>{" "}
-          {visible.length === 1 ? "dataset" : "datasets"} in map area
-        </span>
-        {hidden > 0 && <span>{hidden.toLocaleString()} more outside it</span>}
-      </div>
       <div className="flex-1 overflow-auto">
         <table className="w-full min-w-[1040px] border-collapse text-[13px] tabular-nums">
           <thead className="sticky top-0 z-[1] bg-background text-left text-muted-foreground">

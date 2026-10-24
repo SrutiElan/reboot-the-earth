@@ -121,6 +121,21 @@ function Section({ section }: { section: FilterSection }) {
   }
 }
 
+/** The filter controls, shared by the sidebar and the mobile sheet. */
+export function FilterControls() {
+  return (
+    <>
+      {FILTER_SECTIONS.map((s, i) => (
+        <Section key={i} section={s} />
+      ))}
+      <p className="text-[13px] leading-normal text-muted-foreground">
+        Camera, altitude, area and aircraft describe drone missions; smallest tree and snags describe ground plots.
+        A record stays in the results when something that overlaps it matches.
+      </p>
+    </>
+  );
+}
+
 export function FiltersSheet() {
   const { sheet, setSheet, filters, clearFilters, results } = useCatalog();
   const active = filterChips(filters).length;
@@ -133,13 +148,7 @@ export function FiltersSheet() {
           <SheetDescription>{active ? `${active} active` : "No active filters"}</SheetDescription>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-5">
-          {FILTER_SECTIONS.map((s, i) => (
-            <Section key={i} section={s} />
-          ))}
-          <p className="text-[13px] leading-normal text-muted-foreground">
-            Camera, altitude, area and aircraft describe drone missions; smallest tree and snags describe ground plots.
-            A record stays in the results when something that overlaps it matches.
-          </p>
+          <FilterControls />
         </div>
         <SheetFooter className="grid grid-cols-[1fr_1.4fr] gap-2 border-t px-6 py-4">
           <Button variant="outline" className="h-10" onClick={clearFilters}>
