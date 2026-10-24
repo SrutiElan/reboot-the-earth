@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState } from "react";
-import { MaximizeIcon, MinimizeIcon } from "lucide-react";
+import { MaximizeIcon, MinimizeIcon, SparklesIcon } from "lucide-react";
+import { ASSISTANT_NAME } from "@/lib/catalog/assistant";
 import { cn } from "@/lib/utils";
 import { useCatalog } from "./catalog-provider";
 import { CatalogToolbar } from "./catalog-toolbar";
@@ -32,7 +33,7 @@ function ExpandButton({ label, on, onClick, className }: { label: string; on: bo
 }
 
 export function CatalogView() {
-  const { dockOpen, setDockOpen, catalogLoading, catalogError, reloadCatalog, activeAnswer, results, visible, mapReady } = useCatalog();
+  const { dockOpen, setDockOpen, catalogLoading, catalogError, reloadCatalog, activeAnswer, results, visible, mapReady, pick, clearPick } = useCatalog();
   const [hiddenAnswer, setHiddenAnswer] = useState<typeof activeAnswer>(null);
   const [expanded, setExpanded] = useState<Expanded>(null);
   const showQuery = activeAnswer !== hiddenAnswer;
@@ -76,6 +77,18 @@ export function CatalogView() {
         </div>
 
         <div className={cn("flex min-h-0 flex-1 flex-col bg-background", tableFull && "fixed inset-0 z-[1500]", expanded === "map" && "hidden")}>
+          {pick && (
+            <div className="flex shrink-0 items-center gap-3 border-b bg-selected px-5 py-2 text-[13px]">
+              <SparklesIcon className="size-3.5 shrink-0 text-primary dark:text-drone-ink" aria-hidden />
+              <span className="min-w-0 flex-1 truncate">
+                Showing {pick.ids.size.toLocaleString()} records from {ASSISTANT_NAME}
+                {pick.label ? <span className="text-muted-foreground">: {pick.label}</span> : null}
+              </span>
+              <button type="button" onClick={clearPick} className="shrink-0 font-medium text-primary hover:underline dark:text-drone-ink">
+                Show all
+              </button>
+            </div>
+          )}
           <div className="flex shrink-0 items-center gap-3 border-b px-5 py-2 text-[13px] text-muted-foreground">
             <span className="min-w-0 flex-1 truncate" aria-live="polite">
               {tableFull ? (

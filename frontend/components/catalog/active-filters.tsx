@@ -2,7 +2,6 @@
 
 import { XIcon } from "lucide-react";
 import { filterChips } from "@/lib/catalog/filters";
-import { ASSISTANT_NAME } from "@/lib/catalog/assistant";
 import { useCatalog } from "./catalog-provider";
 
 export function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
@@ -21,20 +20,21 @@ export function Chip({ label, onRemove }: { label: string; onRemove: () => void 
   );
 }
 
-/** The filters and AI picks currently narrowing the catalog. Renders nothing when there are none. */
-export function ActiveFilters() {
-  const { filters, patchFilters, pick, clearPick, clearAll } = useCatalog();
+/** The filters currently narrowing the catalog. Renders nothing when there are none. */
+export function ActiveFilters({ clearable = false }: { clearable?: boolean }) {
+  const { filters, patchFilters, clearFilters } = useCatalog();
   const chips = filterChips(filters);
-  if (!chips.length && !pick) return null;
+  if (!chips.length) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {pick && <Chip label={pick.label ? `${pick.label}, from ${ASSISTANT_NAME}` : `Picked by ${ASSISTANT_NAME}`} onRemove={clearPick} />}
       {chips.map((c) => (
         <Chip key={c.id} label={c.label} onRemove={() => patchFilters(c.clear)} />
       ))}
-      <button type="button" onClick={clearAll} className="h-[28px] rounded-md px-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground">
-        Clear all
-      </button>
+      {clearable && (
+        <button type="button" onClick={clearFilters} className="h-[28px] rounded-md px-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground">
+          Clear all
+        </button>
+      )}
     </div>
   );
 }

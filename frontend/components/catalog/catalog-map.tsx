@@ -15,6 +15,7 @@ const CLUSTER_PX = 80;
 // Last fit request the map acted on. Module scope so it survives the map
 // unmounting while a dataset page is open.
 let fitHandled = 0;
+let flyHandled = 0;
 let lastBasemap: Basemap = "topo";
 
 function clusterHtml(drones: number, grounds: number, c: ReturnType<typeof mapColors>) {
@@ -26,7 +27,7 @@ function clusterHtml(drones: number, grounds: number, c: ReturnType<typeof mapCo
 }
 
 export default function CatalogMap() {
-  const { results: allResults, setBounds, getMapView, saveMapView, fitToken, hoverId, setHoverId } = useCatalog();
+  const { results: allResults, setBounds, getMapView, saveMapView, fitToken, flyTarget, hoverId, setHoverId } = useCatalog();
   const results = useMemo(() => allResults.filter(hasLocation), [allResults]);
   const { resolvedTheme } = useTheme();
   const router = useRouter();
@@ -161,6 +162,14 @@ export default function CatalogMap() {
     });
     return () => cancelAnimationFrame(frame);
   }, [fitToken, results]);
+
+  // Move to a searched place.
+  useEffect(() => {
+    if (!map.current || !flyTarget || flyTarget.token === flyHandled) return;
+    flyHandled = flyTarget.token;
+    const { south, west, north, east } = flyTarget.bounds;
+    map.current.fitBounds([[south, west], [north, east]], { maxZoom: 14 });
+  }, [flyTarget]);
 
   return (
     <>

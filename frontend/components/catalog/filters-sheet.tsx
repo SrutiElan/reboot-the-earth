@@ -25,33 +25,34 @@ function Section({ section }: { section: FilterSection }) {
   const { catalog, filters, patchFilters } = useCatalog();
 
   switch (section.type) {
-    case "year-range":
+    case "year-range": {
+      const backwards = !!filters.yFrom && !!filters.yTo && +filters.yFrom > +filters.yTo;
       return (
         <div className="flex flex-col gap-2">
           <SectionLabel>{section.label}</SectionLabel>
           <div className="grid grid-cols-2 gap-2">
             {(["yFrom", "yTo"] as const).map((key) => (
-              <Select
+              <input
                 key={key}
-                value={filters[key] || ANY}
-                onValueChange={(v) => patchFilters({ [key]: v === ANY ? "" : v })}
-              >
-                <SelectTrigger className="h-[38px] w-full" aria-label={key === "yFrom" ? "From year" : "To year"}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>{key === "yFrom" ? "From any year" : "To any year"}</SelectItem>
-                  {catalog.years.map((y) => (
-                    <SelectItem key={y} value={String(y)}>
-                      {key === "yFrom" ? "From" : "To"} {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                type="number"
+                inputMode="numeric"
+                min={1900}
+                max={2100}
+                value={filters[key]}
+                placeholder={key === "yFrom" ? "From year" : "To year"}
+                aria-label={key === "yFrom" ? "From year" : "To year"}
+                aria-invalid={backwards || undefined}
+                onChange={(e) => patchFilters({ [key]: e.target.value.slice(0, 4) })}
+                className="h-[38px] w-full rounded-lg border border-input bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-red-600 dark:bg-input/30"
+              />
             ))}
           </div>
+          <p className={backwards ? "text-xs text-red-700 dark:text-red-300" : "text-xs text-muted-foreground"}>
+            {backwards ? "The first year is after the last year." : "Type any year; leave a box empty for no limit."}
+          </p>
         </div>
       );
+    }
     case "segmented":
       return (
         <div className="flex flex-col gap-2">

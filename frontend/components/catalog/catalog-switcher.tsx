@@ -1,42 +1,29 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { SparklesIcon } from "lucide-react";
+import { BookmarkIcon, SparklesIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ASSISTANT_NAME } from "@/lib/catalog/assistant";
+import { ASSISTANT_NAME, hasAssistantPanel } from "@/lib/catalog/assistant";
 import { Button } from "@/components/ui/button";
 import { useCatalog } from "./catalog-provider";
 
-// Opens the assistant and the collection.
+// Opens the collection and the assistant.
 export function CatalogSwitcher() {
   const { dockOpen, setDockOpen, collection, setSheet } = useCatalog();
   const pathname = usePathname();
   const router = useRouter();
-  const onCatalog = pathname === "/data/catalog";
-  const aiActive = onCatalog && dockOpen;
+  const panelShowing = dockOpen && hasAssistantPanel(pathname);
 
   // The assistant is a panel beside the catalog; from other pages, go to the catalog with it open.
   const openAssistant = () => {
-    if (onCatalog) return setDockOpen(!dockOpen);
     setDockOpen(true);
-    router.push("/data/catalog");
+    if (!hasAssistantPanel(pathname)) router.push("/data/catalog");
   };
 
   return (
     <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        aria-pressed={aiActive}
-        onClick={openAssistant}
-        className={cn(
-          "h-9 gap-2 px-3",
-          aiActive && "border-primary/40 bg-selected text-primary hover:bg-selected dark:text-drone-ink",
-        )}
-      >
-        <SparklesIcon className="size-[15px] text-primary dark:text-drone-ink" />
-        Ask {ASSISTANT_NAME}
-      </Button>
       <Button variant="outline" className="h-9 gap-2 pr-2.5 pl-3" onClick={() => setSheet("collection")}>
+        <BookmarkIcon className="size-[15px]" aria-hidden />
         Collection
         <span
           className={cn(
@@ -47,6 +34,12 @@ export function CatalogSwitcher() {
           {collection.length}
         </span>
       </Button>
+      {!panelShowing && (
+        <Button variant="outline" onClick={openAssistant} className="h-9 gap-2 px-3">
+          <SparklesIcon className="size-[15px] text-primary dark:text-drone-ink" />
+          Ask {ASSISTANT_NAME}
+        </Button>
+      )}
     </div>
   );
 }

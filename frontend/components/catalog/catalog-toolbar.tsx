@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ClockIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react";
+import { ClockIcon, MapPinIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react";
+import type { Bounds } from "@/lib/catalog";
 import { filterChips, type KindFilter } from "@/lib/catalog/filters";
 import { plural } from "@/lib/catalog/format";
 import { cn } from "@/lib/utils";
@@ -23,19 +24,41 @@ const KINDS: { value: KindFilter; label: string }[] = [
 const RECENT_KEY = "ofo.recent-searches.v1";
 const MAX_RECENT = 8;
 
+interface Place {
+  name: string;
+  bounds: Bounds;
+}
+
+// OpenStreetMap's public geocoder: fine for a few typed searches, not for bulk use.
+async function geocode(q: string, signal: AbortSignal): Promise<Place[]> {
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) return [];
+  const rows = (await res.json()) as { display_name: string; boundingbox: [string, string, string, string] }[];
+  return rows.map((r) => ({ name: r.display_name, bounds: { south: +r.boundingbox[0], north: +r.boundingbox[1], west: +r.boundingbox[2], east: +r.boundingbox[3] } }));
+}
+
+interface Option {
+  key: string;
+  label: string;
+  hint?: string;
+  recent?: boolean;
+  place?: boolean;
+  choose: () => void;
+}
+
 function PlaceSearch() {
-  const { catalog, query, setQuery, requestFit } = useCatalog();
+  const { catalog, query, setQuery, requestFit, flyTo } = useCatalog();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const { list: recent, add, remove, clear } = useStoredList(RECENT_KEY, MAX_RECENT);
   const input = useRef<HTMLInputElement>(null);
   const params = useSearchParams();
+  const [found, setFound] = useState<{ q: string; places: Place[] }>({ q: "", places: [] });
 
   const remember = (term: string) => {
     const t = term.trim();
     if (t.length >= 2) add(t);
   };
-  const forget = (term?: string) => (term ? remove(term) : clear());
 
   useEffect(() => {
     const focus = () => input.current?.focus();
@@ -45,21 +68,47 @@ function PlaceSearch() {
   }, [params]);
 
   const q = query.trim().toLowerCase();
-  const places =
-    q && !catalog.siteNames.some((n) => n.toLowerCase() === q)
-      ? catalog.siteNames.filter((n) => n.toLowerCase().includes(q)).slice(0, 6)
-      : [];
-  // Empty box: show recent searches. Typing: suggest matching places.
-  const showRecent = open && !q && recent.length > 0;
-  const showPlaces = open && places.length > 0;
-  const options = showRecent ? recent : places;
 
-  const choose = (name: string) => {
+  // Look the text up as a real place once typing pauses.
+  useEffect(() => {
+    if (q.length < 3) return;
+    const abort = new AbortController();
+    const timer = setTimeout(() => {
+      geocode(q, abort.signal)
+        .then((places) => setFound({ q, places }))
+        .catch(() => undefined);
+    }, 450);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [q]);
+
+  const sites = q && !catalog.siteNames.some((n) => n.toLowerCase() === q) ? catalog.siteNames.filter((n) => n.toLowerCase().includes(q)).slice(0, 4) : [];
+  const places = found.q === q ? found.places : [];
+
+  const chooseText = (name: string) => {
     setQuery(name);
     remember(name);
     setOpen(false);
     requestFit();
   };
+  const choosePlace = (place: Place) => {
+    // Fly there and clear the text, so the catalog isn't also filtered by the place name.
+    setQuery("");
+    remember(place.name.split(",")[0]);
+    setOpen(false);
+    flyTo(place.bounds);
+  };
+
+  const showRecent = open && !q && recent.length > 0;
+  const options: Option[] = showRecent
+    ? recent.map((r) => ({ key: `r-${r}`, label: r, recent: true, choose: () => chooseText(r) }))
+    : [
+        ...sites.map((s) => ({ key: `s-${s}`, label: s, hint: plural(catalog.all.filter((d) => d.site === s).length, "dataset"), choose: () => chooseText(s) })),
+        ...places.map((p) => ({ key: `p-${p.name}`, label: p.name, place: true, choose: () => choosePlace(p) })),
+      ];
+  const showList = open && options.length > 0;
 
   return (
     <div className="relative min-w-0 flex-[1_1_240px] sm:max-w-[560px]">
@@ -69,10 +118,10 @@ function PlaceSearch() {
           ref={input}
           value={query}
           role="combobox"
-          aria-expanded={showPlaces || showRecent}
+          aria-expanded={showList}
           aria-controls="place-list"
           aria-label="Search places or datasets"
-          placeholder="Search places or datasets"
+          placeholder="Search a place or dataset"
           autoComplete="off"
           className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           onChange={(e) => {
@@ -89,7 +138,7 @@ function PlaceSearch() {
             if (e.key === "ArrowDown") setActive((a) => Math.min(a + 1, options.length - 1));
             else if (e.key === "ArrowUp") setActive((a) => Math.max(a - 1, 0));
             else if (e.key === "Enter") {
-              if (options[active] && (showRecent || showPlaces)) choose(options[active]);
+              if (showList && options[active]) options[active].choose();
               else {
                 remember(query);
                 setOpen(false);
@@ -112,60 +161,57 @@ function PlaceSearch() {
           </button>
         )}
       </div>
-      {(showPlaces || showRecent) && (
+      {showList && (
         <ul
           id="place-list"
           role="listbox"
-          aria-label={showRecent ? "Recent searches" : "Places"}
-          className="absolute top-11 right-0 left-0 z-[1100] rounded-lg border bg-popover p-1 shadow-[0_10px_30px_rgba(0,0,0,0.08)]"
+          aria-label={showRecent ? "Recent searches" : "Suggestions"}
+          className="absolute top-11 right-0 left-0 z-[1100] max-h-[60vh] overflow-y-auto rounded-lg border bg-popover p-1 shadow-[0_10px_30px_rgba(0,0,0,0.08)]"
         >
           {showRecent && (
             <li role="presentation" className="flex items-center justify-between px-2.5 pt-1.5 pb-1 text-xs text-muted-foreground">
               <span>Recent searches</span>
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => forget()} className="hover:text-foreground">
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={clear} className="hover:text-foreground">
                 Clear
               </button>
             </li>
           )}
-          {options.map((name, i) => (
+          {options.map((o, i) => (
             <li
-              key={name}
+              key={o.key}
               role="option"
               aria-selected={i === active}
               onMouseDown={(e) => {
                 e.preventDefault();
-                choose(name);
+                o.choose();
               }}
               onMouseEnter={() => setActive(i)}
-              className={cn(
-                "group flex cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm",
-                i === active && "bg-muted",
-              )}
+              className={cn("flex cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm", i === active && "bg-muted")}
             >
               <span className="flex min-w-0 items-center gap-2">
-                {showRecent && <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />}
-                <span className="truncate">{name}</span>
+                {o.recent && <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />}
+                {o.place && <MapPinIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />}
+                <span className="truncate">{o.label}</span>
               </span>
-              {showRecent ? (
+              {o.recent ? (
                 <button
                   type="button"
-                  aria-label={`Remove ${name} from recent searches`}
+                  aria-label={`Remove ${o.label} from recent searches`}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    forget(name);
+                    remove(o.label);
                   }}
                   className="rounded p-0.5 text-muted-foreground hover:text-foreground"
                 >
                   <XIcon className="size-3.5" />
                 </button>
               ) : (
-                <span className="text-[13px] text-muted-foreground tabular-nums">
-                  {plural(catalog.all.filter((d) => d.site === name).length, "dataset")}
-                </span>
+                o.hint && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{o.hint}</span>
               )}
             </li>
           ))}
+          {!showRecent && places.length > 0 && <li role="presentation" className="px-2.5 pt-1 pb-1.5 text-[11px] text-muted-foreground">Places from OpenStreetMap</li>}
         </ul>
       )}
     </div>
@@ -224,7 +270,7 @@ export function CatalogToolbar() {
       </div>
 
       <div className="lg:hidden">
-        <ActiveFilters />
+        <ActiveFilters clearable />
       </div>
     </div>
   );
