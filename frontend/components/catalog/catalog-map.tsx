@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 import L from "leaflet";
 import type { Dataset } from "@/lib/catalog";
 import { useCatalog } from "./catalog-provider";
-import { datasetBounds, datasetShape, hasLocation, mapColors, setEmphasis, TILES, type DatasetLayer } from "./map-style";
+import { BASEMAPS, BASEMAP_ATTRIBUTION, datasetBounds, datasetShape, hasLocation, mapColors, setEmphasis, type Basemap, type DatasetLayer } from "./map-style";
 
 const DEFAULT_VIEW = { center: [39.0, -121.2] as [number, number], zoom: 6 };
 const DETAIL_ZOOM = 11;
@@ -15,6 +15,7 @@ const CLUSTER_PX = 80;
 // Last fit request the map acted on. Module scope so it survives the map
 // unmounting while a dataset page is open.
 let fitHandled = 0;
+let lastBasemap: Basemap = "topo";
 
 function clusterHtml(drones: number, grounds: number, c: ReturnType<typeof mapColors>) {
   const seg = (n: number, color: string, radius: string) =>
@@ -34,6 +35,7 @@ export default function CatalogMap() {
   const tiles = useRef<L.TileLayer | null>(null);
   const group = useRef<L.LayerGroup | null>(null);
   const shapes = useRef<Map<string, { layer: DatasetLayer; d: Dataset }>>(new Map());
+  const [basemap, setBasemap] = useState<Basemap>(lastBasemap);
   const [zoomTick, setZoomTick] = useState(0);
   const onZoom = useCallback(() => setZoomTick((z) => z + 1), []);
   const dark = resolvedTheme === "dark";
@@ -77,9 +79,10 @@ export default function CatalogMap() {
   useEffect(() => {
     if (!map.current) return;
     tiles.current?.remove();
-    tiles.current = L.tileLayer(dark ? TILES.dark : TILES.light, { attribution: "Esri", maxZoom: 16 }).addTo(map.current);
+    lastBasemap = basemap;
+    tiles.current = L.tileLayer(BASEMAPS[basemap].url, { attribution: BASEMAP_ATTRIBUTION, maxZoom: BASEMAPS[basemap].maxZoom }).addTo(map.current);
     tiles.current.bringToBack();
-  }, [dark]);
+  }, [basemap]);
 
   // Draw clusters when zoomed out, footprints and plot points when zoomed in.
   useEffect(() => {
@@ -159,5 +162,23 @@ export default function CatalogMap() {
     return () => cancelAnimationFrame(frame);
   }, [fitToken, results]);
 
-  return <div ref={el} className="absolute inset-0" />;
+  return (
+    <>
+      <div ref={el} className="absolute inset-0" />
+      <div role="radiogroup" aria-label="Basemap" className="absolute top-3 right-3 z-[1000] flex rounded-lg border bg-popover p-[3px] text-xs shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+        {(Object.keys(BASEMAPS) as Basemap[]).map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={basemap === k}
+            onClick={() => setBasemap(k)}
+            className={basemap === k ? "rounded-md bg-muted px-2 py-1 font-medium text-foreground" : "rounded-md px-2 py-1 text-muted-foreground hover:text-foreground"}
+          >
+            {BASEMAPS[k].label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
 }

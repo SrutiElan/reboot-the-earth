@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import L from "leaflet";
 import type { Dataset } from "@/lib/catalog";
-import { datasetBounds, datasetShape, hasLocation, mapColors, TILES } from "./map-style";
+import { BASEMAPS, BASEMAP_ATTRIBUTION, datasetBounds, datasetShape, hasLocation, mapColors } from "./map-style";
 import { useCatalog } from "./catalog-provider";
 
 // A dataset's own footprint or point, plus everything it overlaps.
@@ -21,7 +21,7 @@ export default function DatasetMap({ dataset }: { dataset: Dataset }) {
     const c = mapColors(dark);
     const m = L.map(el.current, { zoomControl: false, scrollWheelZoom: false });
     L.control.zoom({ position: "bottomright" }).addTo(m);
-    L.tileLayer(dark ? TILES.dark : TILES.light, { maxZoom: 16, attribution: "Esri" }).addTo(m);
+    L.tileLayer(BASEMAPS.topo.url, { maxZoom: BASEMAPS.topo.maxZoom, attribution: BASEMAP_ATTRIBUTION }).addTo(m);
     const items = [dataset, ...dataset.overlaps.map((id) => catalog.byId(id)).filter((d): d is Dataset => !!d)].filter(hasLocation);
     // Initialize the view before adding polygon renderers (Leaflet needs bounds).
     const bounds = datasetBounds(items);
