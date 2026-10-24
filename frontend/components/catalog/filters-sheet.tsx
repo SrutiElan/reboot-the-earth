@@ -90,7 +90,7 @@ function Section({ section }: { section: FilterSection }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ANY}>{section.anyLabel}</SelectItem>
-              {catalog.aircraft.map((a) => ({ value: a, label: a })).map((o) => (
+              {(section.key === "license" ? catalog.licenses : catalog.aircraft).map((a) => ({ value: a, label: a })).map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>
@@ -137,8 +137,8 @@ export function FiltersSheet() {
             <Section key={i} section={s} />
           ))}
           <p className="text-[13px] leading-normal text-muted-foreground">
-            Camera, altitude, area and aircraft describe drone missions. Ground plots stay in the results when a
-            matching mission covers them.
+            Camera, altitude, area and aircraft describe drone missions; smallest tree and snags describe ground plots.
+            A record stays in the results when something that overlaps it matches.
           </p>
         </div>
         <SheetFooter className="grid grid-cols-[1fr_1.4fr] gap-2 border-t px-6 py-4">
