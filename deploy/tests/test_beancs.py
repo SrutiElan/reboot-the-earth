@@ -1,8 +1,9 @@
 import copy
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+import io
 
-from deploy.beancs import BeanCS, DeliveryError, deliver, validate_inputs, wait_for_run
+from deploy.beancs import BeanCS, DeliveryError, deliver, smoke_test, validate_inputs, wait_for_run
 
 CONFIG = {"site_url": "https://example.test", "environment_id": "production", "delivery_target_id": "cluster",
           "artifact_connection_id": "registry", "components": {
@@ -17,6 +18,9 @@ class FakeBeanCS:
 
     def request(self, path, method="GET", payload=None):
         self.calls.append((path, method, copy.deepcopy(payload)))
+        if path.startswith("/deployment-runs?"):
+            return {"data": [{"status": "succeeded", "release_id": "old-" + name,
+                              "delivery_target_id": "cluster"} for name in ("backend", "frontend")]}
         if path.startswith("/releases?"):
             name = "backend" if "component_id=backend" in path else "frontend"
             return {"data": [] if self.no_previous else [{"id": "old-" + name, "status": "succeeded",
@@ -65,6 +69,38 @@ class DeliveryTests(unittest.TestCase):
         with self.assertRaisesRegex(DeliveryError, "unhealthy"):
             deliver(client, CONFIG, DIGESTS, "c" * 40, "v1", "run:1", verify=Mock(side_effect=DeliveryError("unhealthy")), waiter=Mock())
         self.assertEqual(sum(path.endswith("/rollback") for path, _, _ in client.calls), 2)
+
+    def test_next_release_uses_actual_rollback_target_not_newest_release(self):
+        client = FakeBeanCS()
+        original = client.request
+        def request(path, method="GET", payload=None):
+            result = original(path, method, payload)
+            if path.startswith("/releases?"):
+                newer = dict(result["data"][0], id="newer-but-rolled-back", runtime_config_revision="wrong-runtime")
+                result["data"].insert(0, newer)
+            return result
+        client.request = request
+        deliver(client, CONFIG, DIGESTS, "c" * 40, "v1", "run:1", verify=Mock(), waiter=Mock())
+        for path, _, body in client.calls:
+            if path == "/releases":
+                self.assertNotEqual(body["runtime_config_revision"], "wrong-runtime")
+
+    def test_smoke_probe_identifies_itself_and_never_sends_deploy_token(self):
+        counts = b'{"rows":[{"role":"ofo_reader","trees":64295,"plots":287,"missions":687}]}'
+        with patch("deploy.beancs.urllib.request.urlopen") as open_:
+            responses = []
+            for body in [b"", b"", b"", counts, b'{"configured":true,"provider":"openai"}']:
+                response = Mock()
+                response.status = 200
+                response.read = io.BytesIO(body).read
+                response.__enter__ = Mock(return_value=response)
+                response.__exit__ = Mock(return_value=False)
+                responses.append(response)
+            open_.side_effect = responses
+            smoke_test("https://example.test")
+        for call in open_.call_args_list:
+            self.assertEqual(call.args[0].get_header("User-agent"), "RebootEarth-GitHubActions/1")
+            self.assertIsNone(call.args[0].get_header("Authorization"))
 
     def test_missing_previous_release_makes_no_writes(self):
         client = FakeBeanCS(); client.no_previous = True

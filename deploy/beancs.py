@@ -92,8 +92,10 @@ def wait_for_run(client, run_id: str, timeout: int = 420, *, clock=time.monotoni
 
 def smoke_test(site_url: str):
     """No model calls, synthetic imports or writes to the production database."""
+    headers = {"User-Agent": "RebootEarth-GitHubActions/1"}
     for path in ("/data/catalog", "/data/sql", "/data/upload"):
-        with urllib.request.urlopen(site_url + path, timeout=30) as response:
+        request = urllib.request.Request(site_url + path, headers=headers)
+        with urllib.request.urlopen(request, timeout=30) as response:
             if response.status != 200:
                 raise DeliveryError("Public page unavailable: " + path)
     sql = ("SELECT current_user AS role, (SELECT count(*) FROM ofo_trees) AS trees, "
@@ -101,12 +103,13 @@ def smoke_test(site_url: str):
            "(SELECT count(*) FROM ofo_drone_missions) AS missions")
     request = urllib.request.Request(site_url + "/api/sql/query", method="POST",
                                      data=json.dumps({"sql": sql}).encode(),
-                                     headers={"Content-Type": "application/json"})
+                                     headers={**headers, "Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=30) as response:
         row = json.load(response)["rows"][0]
     if row["role"] != "ofo_reader" or row["trees"] < 64295 or row["plots"] < 287 or row["missions"] < 687:
         raise DeliveryError("Production data/read-only role verification failed")
-    with urllib.request.urlopen(site_url + "/api/assistant/status", timeout=30) as response:
+    request = urllib.request.Request(site_url + "/api/assistant/status", headers=headers)
+    with urllib.request.urlopen(request, timeout=30) as response:
         status = json.load(response)
     if not status.get("configured") or status.get("provider") != "openai":
         raise DeliveryError("The server-side OpenAI configuration is unavailable")
@@ -120,13 +123,18 @@ def deliver(client, config: dict, digests: dict[str, str], revision: str, tag: s
     # Snapshot both last-good releases before the first mutation. Preserve their
     # runtime revisions, secret bindings, namespace, ports and storage settings.
     previous = {}
+    runs = client.request("/deployment-runs?status=succeeded&limit=200")["data"]
     for name in ("backend", "frontend"):
         component = config["components"][name]
         query = urllib.parse.urlencode({"component_id": component["id"],
                                         "environment_id": config["environment_id"], "limit": 200})
         releases = client.request("/releases?" + query)["data"]
-        good = next((r for r in releases if r["status"] == "succeeded" and
-                     r["delivery_target_id"] == config["delivery_target_id"]), None)
+        by_id = {r["id"]: r for r in releases}
+        # A rollback redeploys an OLDER release. Its new successful run, not
+        # release creation order, identifies the image actually in production.
+        good = next((by_id[run["release_id"]] for run in runs
+                     if run["status"] == "succeeded" and run["release_id"] in by_id
+                     and run["delivery_target_id"] == config["delivery_target_id"]), None)
         if not good:
             raise DeliveryError(f"No successful {name} release found; refusing an unprotected initial deployment")
         previous[name] = good
