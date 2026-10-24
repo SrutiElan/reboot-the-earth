@@ -138,6 +138,18 @@ class QueryPipelineTests(unittest.TestCase):
 class ActionTests(unittest.TestCase):
     """Model-proposed actions are validated; ids come from the real query result."""
 
+    @classmethod
+    def setUpClass(cls):
+        # This class can run before QueryPipelineTests on a fresh CI database.
+        # Initialize catalog views through the same lifespan as the live API.
+        cls.context = TestClient(app)
+        cls.context.__enter__()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.context.__exit__(None, None, None)
+        assistant.engine.dispose()
+
     @staticmethod
     def action(kind, dataset_id=None, filters=None):
         return assistant.Action(type=kind, dataset_id=dataset_id, filters=filters)
