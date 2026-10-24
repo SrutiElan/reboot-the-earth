@@ -38,7 +38,7 @@ export default function DataLanding() {
               <Link href="/data/catalog">View data</Link>
             </Button>
             <Button asChild variant="outline" className="h-11 gap-2 px-[22px] text-[15px]">
-              <Link href="/data/assistant">
+              <Link href="/data/catalog?ai=1">
                 <SparklesIcon className="size-4 text-primary dark:text-drone-ink" />
                 Ask {ASSISTANT_NAME}
               </Link>

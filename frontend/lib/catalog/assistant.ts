@@ -22,10 +22,23 @@ export interface Attempt {
   row_count?: number;
   decision?: string;
 }
+/** Actions the assistant performed for the user; the server validates every id. */
+export type AssistantAction =
+  | { type: "add_to_collection"; ids: string[] }
+  | { type: "set_filters"; filters: Partial<Filters> }
+  | { type: "open_dataset"; dataset_id: string };
+
 export interface Answer {
   text: string;
   preview: string[];
   apply: Apply | null;
+  actions: AssistantAction[];
+  /** Ids this answer newly added to the collection (client side, enables undo). */
+  added?: string[];
+  undone?: boolean;
+  /** Filters proposed by the assistant wait here until the user confirms or dismisses them. */
+  pending?: boolean;
+  dismissed?: boolean;
   ctx: string[];
   follow: string[];
   data: QueryData | null;
@@ -36,7 +49,7 @@ export interface Answer {
 }
 export const STARTERS = [
   "Which drone missions overlap ground plots?",
-  "What's the most recently surveyed plot?",
-  "Nadir flights since 2024 with a Mavic aircraft",
-  "统计每个项目的树木数量、平均树高和物种数量",
+  "Put every plot that includes snags and measures trees down to 5 cm in my collection",
+  "Show plots covered by drone flights on three or more different dates",
+  "Open the most recently surveyed plot",
 ];

@@ -9,6 +9,32 @@ import type { Answer, Apply } from "@/lib/catalog/assistant";
 
 export type ChatMessage = { role: "user"; text: string } | { role: "ai"; answer: Answer };
 
+export interface SavedChat {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
+const CHATS_KEY = "ofo.chats.v1";
+const MAX_CHATS = 30;
+const MAX_SAVED_ROWS = 50;
+
+/** Saved chats keep the conversation but not the full result tables or retry traces. */
+function slimMessage(m: ChatMessage): ChatMessage {
+  if (m.role === "user") return m;
+  const { data } = m.answer;
+  return {
+    role: "ai",
+    answer: {
+      ...m.answer,
+      attempts: [],
+      pending: false,
+      data: data && { ...data, rows: data.rows.slice(0, MAX_SAVED_ROWS), truncated: data.truncated || data.rows.length > MAX_SAVED_ROWS },
+    },
+  };
+}
+
 export interface MapView {
   center: [number, number];
   zoom: number;
@@ -62,7 +88,16 @@ interface CatalogContext {
   appliedIdx: number;
   ask: (question: string) => void;
   applyAnswer: (apply: Apply, idx: number) => void;
+  /** Run the actions an answer proposed (filters need this confirmation first). */
+  confirmAnswer: (messageIdx: number) => void;
+  dismissAnswer: (messageIdx: number) => void;
+  chats: SavedChat[];
+  chatId: string | null;
+  loadChat: (id: string) => void;
+  deleteChat: (id: string) => void;
   newChat: () => void;
+  /** Remove what an assistant answer added to the collection. */
+  undoAdd: (messageIdx: number) => void;
 }
 
 const Ctx = createContext<CatalogContext | null>(null);
@@ -109,6 +144,13 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     pathnameRef.current = pathname;
   }, [pathname]);
   const convo = useRef<string[]>([]);
+  const [chats, setChats] = useState<SavedChat[]>([]);
+  const [chatsLoaded, setChatsLoaded] = useState(false);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const collectionRef = useRef<string[]>([]);
+  useEffect(() => {
+    collectionRef.current = collection;
+  }, [collection]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -125,6 +167,27 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   }, [reloadToken]);
 
   useEffect(() => () => controller.current?.abort(), []);
+
+  // Chat history lives in this browser only.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CHATS_KEY) ?? "[]");
+      if (Array.isArray(saved)) setChats(saved);
+    } catch {}
+    setChatsLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!chatsLoaded) return;
+    try {
+      localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+    } catch {}
+  }, [chats, chatsLoaded]);
+  useEffect(() => {
+    if (!messages.length || !chatId) return;
+    const title = (messages.find((m) => m.role === "user") as { text: string } | undefined)?.text.slice(0, 60) ?? "Chat";
+    const saved: SavedChat = { id: chatId, title, updatedAt: Date.now(), messages: messages.map(slimMessage) };
+    setChats((all) => [saved, ...all.filter((c) => c.id !== chatId)].slice(0, MAX_CHATS));
+  }, [messages, chatId]);
 
   const results = useMemo(
     () => filterDatasets(catalog, { filters, query, kind, ids: pick?.ids }),
@@ -148,6 +211,45 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     [router, requestFit],
   );
 
+  /** Perform an answer's actions and mark which records it added to the collection. */
+  const runAnswer = useCallback(
+    (a: Answer, idx: number): Answer => {
+      const adds = a.actions.flatMap((x) => (x.type === "add_to_collection" ? x.ids : []));
+      let done = a;
+      if (adds.length) {
+        const have = new Set(collectionRef.current);
+        const added = [...new Set(adds)].filter((id) => !have.has(id));
+        done = { ...a, added };
+        setCollection((c) => [...c, ...added]);
+        setMessages((all) => all.map((m, i) => (i === idx && m.role === "ai" ? { role: "ai", answer: done } : m)));
+      }
+      const open = a.actions.find((x) => x.type === "open_dataset");
+      if (open) {
+        setDockOpen(true);
+        router.push(`/data/datasets/${open.dataset_id}#timeline`);
+      } else if (a.apply) applyAnswer(a.apply, idx);
+      else {
+        setPick(null);
+        setFilters(EMPTY_FILTERS);
+        setQuery("");
+        setKind("all");
+      }
+      return done;
+    },
+    [router, applyAnswer],
+  );
+
+  const resolveAnswer = useCallback(
+    (idx: number, accept: boolean) => {
+      const m = messages[idx];
+      if (m?.role !== "ai" || !m.answer.pending) return;
+      const base = { ...m.answer, pending: false, dismissed: !accept };
+      setMessages((all) => all.map((x, i) => (i === idx ? { role: "ai", answer: base } : x)));
+      if (accept) runAnswer(base, idx);
+    },
+    [messages, runAnswer],
+  );
+
   const ask = useCallback(
     async (question: string) => {
       const q = question.trim();
@@ -155,6 +257,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       inFlight.current = true;
       const abort = new AbortController();
       controller.current = abort;
+      setChatId((id) => id ?? crypto.randomUUID());
       setMessages((m) => [...m, { role: "user", text: q }]);
       setBusy(true);
       setActiveAnswer(null);
@@ -188,10 +291,14 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
             const a = event.answer;
             completed = true;
             convo.current = a.ctx;
-            setMessages((m) => [...m, { role: "ai", answer: a }]);
-            setActiveAnswer(a.data ? a : null);
-            if (a.apply) applyAnswer(a.apply, messages.length + 1);
-            else { setPick(null); setFilters(EMPTY_FILTERS); setQuery(""); setKind("all"); }
+            a.actions ??= [];
+            const idx = messages.length + 1;
+            // Filters change what the user is looking at, so they wait for a confirmation.
+            const needsConfirm = a.actions.some((x) => x.type === "set_filters");
+            const shown = needsConfirm ? { ...a, pending: true } : a;
+            setMessages((m) => [...m, { role: "ai", answer: shown }]);
+            setActiveAnswer(a.data ? shown : null);
+            if (!needsConfirm) runAnswer(a, idx);
           }
         };
         while (true) {
@@ -208,7 +315,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (!abort.signal.aborted) {
           setMessages((m) => [...m, { role: "ai", answer: {
-            text: error instanceof Error ? error.message : "The assistant is unavailable", preview: [], apply: null,
+            text: error instanceof Error ? error.message : "The assistant is unavailable", preview: [], apply: null, actions: [],
             ctx: [], follow: [], data: null, sql: null, attempts: [], status: "failed",
           } }]);
         }
@@ -221,7 +328,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [messages, pathname, router, applyAnswer],
+    [messages, pathname, router, runAnswer],
   );
 
   const value: CatalogContext = {
@@ -267,17 +374,52 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     appliedIdx,
     ask,
     applyAnswer,
+    undoAdd: (messageIdx) => {
+      const message = messages[messageIdx];
+      if (message?.role !== "ai" || !message.answer.added?.length) return;
+      const remove = new Set(message.answer.added);
+      setCollection((c) => c.filter((id) => !remove.has(id)));
+      setMessages((all) => all.map((m, i) => (i === messageIdx && m.role === "ai" ? { role: "ai", answer: { ...m.answer, added: [], undone: true } } : m)));
+    },
+    confirmAnswer: (idx) => resolveAnswer(idx, true),
+    dismissAnswer: (idx) => resolveAnswer(idx, false),
+    chats,
+    chatId,
+    loadChat: (id) => {
+      const chat = chats.find((c) => c.id === id);
+      if (!chat) return;
+      controller.current?.abort();
+      inFlight.current = false;
+      setBusy(false);
+      setProgress("");
+      setMessages(chat.messages);
+      setChatId(id);
+      setAppliedIdx(-1);
+      setActiveAnswer(null);
+      const last = chat.messages.findLast((m) => m.role === "ai");
+      convo.current = last?.role === "ai" ? last.answer.ctx : [];
+      setDockOpen(true);
+    },
+    deleteChat: (id) => {
+      setChats((all) => all.filter((c) => c.id !== id));
+      if (id === chatId) {
+        setMessages([]);
+        setChatId(null);
+        convo.current = [];
+        setActiveAnswer(null);
+      }
+    },
+    // Starts a fresh conversation in the same panel; no page change.
     newChat: () => {
       controller.current?.abort();
+      inFlight.current = false;
+      setBusy(false);
+      setProgress("");
       setMessages([]);
+      setChatId(null);
       setAppliedIdx(-1);
-      setDockOpen(false);
-      setPick(null);
-      setFilters(EMPTY_FILTERS);
-      setQuery("");
       convo.current = [];
       setActiveAnswer(null);
-      router.push("/data/assistant");
     },
   };
 
