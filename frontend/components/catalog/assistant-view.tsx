@@ -1,6 +1,8 @@
 "use client";
 
-import { STARTERS } from "@/lib/catalog/assistant";
+import Link from "next/link";
+import { ChevronRightIcon } from "lucide-react";
+import { ASSISTANT_NAME, STARTERS } from "@/lib/catalog/assistant";
 import { useCatalog } from "./catalog-provider";
 import { ChatInput } from "./chat-thread";
 import { CatalogSwitcher } from "./catalog-switcher";
@@ -10,7 +12,18 @@ export function AssistantView() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="flex justify-end px-5 pt-4">
+      <div className="flex flex-wrap items-center gap-3 px-5 pt-4">
+        <nav aria-label="Breadcrumb" className="flex flex-1 flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+          <Link href="/data" className="text-foreground hover:underline">
+            Data
+          </Link>
+          <ChevronRightIcon className="size-3.5" aria-hidden />
+          <Link href="/data/catalog" className="text-foreground hover:underline">
+            All datasets
+          </Link>
+          <ChevronRightIcon className="size-3.5" aria-hidden />
+          <span aria-current="page">Ask {ASSISTANT_NAME}</span>
+        </nav>
         <CatalogSwitcher />
       </div>
       <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col justify-center gap-8 px-5 pt-10 pb-16">
