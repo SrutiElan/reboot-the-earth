@@ -65,6 +65,22 @@ contribution imports; enforce sensible ingress request limits and retain the
 server's SQL read-only, timeout and upload-validation safeguards.
 See [the production runbook](docs/DEPLOYMENT.md) for infrastructure and update details.
 
+## Release with a tag
+
+Pull requests and `main` pushes run CI. Pushing **any tag** runs tests, builds
+images on GitHub Actions and deploys that exact commit through BeanCS:
+
+```bash
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push origin v0.1.1
+```
+
+Every tag, including prerelease tags, targets production. Releases queue safely;
+failed rollouts request rollback. The pipeline preserves the existing database
+and uploaded contributions. See [Actions](https://github.com/zeturn/reboot-earth-proj/actions)
+for progress and [the runbook](docs/DEPLOYMENT.md#cicd-release-by-pushing-a-tag)
+for credentials, recovery and tag conventions.
+
 ## Future contributions
 
 Open new pull requests against this repository's `main` branch. Existing clones

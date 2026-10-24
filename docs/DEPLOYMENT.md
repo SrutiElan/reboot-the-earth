@@ -48,25 +48,72 @@ Never put credentials in Git, build arguments, image layers or browser variables
 There is no production Gemini key and no APICred dependency. After rotating the
 OpenAI key in the backend Secret, restart only `deployment/reboot-earth-backend`.
 
-## Updates
+## CI/CD: release by pushing a tag
 
-Push changes to `origin/main`. A Git push alone does **not** automatically deploy:
-no automatic production trigger has been enabled.
-
-Build images locally, not on the memory-constrained control node:
+Pull requests and pushes to `main` run CI. **Every pushed tag** triggers
+`.github/workflows/release.yml`, using the exact tagged commit, not the moving
+`main` branch. Creating a tag only on your laptop is not enough; push it:
 
 ```bash
-docker build --platform linux/amd64 -f frontend/Dockerfile.prod --build-arg NEXT_PUBLIC_API_URL= -t registry.beancs.com/tenant-2/reboot-earth-frontend:<commit> frontend
-docker build --platform linux/amd64 -t registry.beancs.com/tenant-2/reboot-earth-backend:<commit> backend
+git switch main
+git pull --ff-only origin main
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push origin v0.1.1
 ```
 
-Publish with unique commit tags. Resolve each image in BeanCS using
-`POST /v2/artifacts/resolve` with the Harbor connection
-`2c0c4124-7622-47f2-97ba-d3beb67ea4ea`, repository and immutable digest.
-Supply **either** a digest **or** a tag, not both. Create a runtime configuration,
-release and deployment run for the corresponding component. Preserve the existing
-namespace, environment, instance ID, health checks and worker node selection.
-Do not rebuild or reimport the database for normal application updates.
+Use a new, unique tag for each release. Tags must point to commits that include
+the release workflow. Tags from other branches and prerelease tags also deploy
+to **production**, so tag only code you intend to publish. GitHub workflow
+concurrency queues releases (up to 100 pending runs) without canceling one that
+is already running.
+
+The automatic chain is:
+
+1. Import source data into a disposable CI PostGIS service and run backend tests,
+   deployment safety tests, frontend lint and a production frontend build.
+2. Build amd64 images on GitHub-hosted runners, using this repository's GitHub
+   Actions billing. The control node does not build application images.
+3. Push unique run/attempt image tags to the private Harbor project
+   `reboot-earth-proj` (`backend` and `frontend` repositories).
+4. Resolve immutable image digests through BeanCS, reuse the previous successful
+   runtime configuration, then roll out backend and frontend sequentially.
+5. Verify public HTTPS pages, SQL data counts and the server-side OpenAI
+   configuration without spending model tokens. If rollout or verification
+   fails, request rollback to the previous successful releases and fail the run.
+
+Track progress in [GitHub Actions](https://github.com/zeturn/reboot-earth-proj/actions)
+and BeanCS deployment history. Successful workflow summaries include the exact
+commit, image digests and BeanCS release IDs. Database volumes, secrets and user
+contributions are not rebuilt, reimported or deleted by this pipeline. Releases
+must remain backward-compatible with the current database; destructive schema
+migrations are deliberately outside this automatic workflow.
+
+`deploy/production.json` contains non-secret target IDs. The artifact connection
+is `ee14ae4f-80b9-4a26-8f6f-8245512a5af6`, backed by a pull-only credential for
+this project's registry. Existing Kubernetes worker node selection is preserved.
+
+### CI credentials and rotation
+
+The GitHub `production` environment accepts tag deployments only and contains:
+
+- `BEANCS_API_KEY`: `applications:read`, `deployments:read`, `deployments:write`;
+  no administrator, runtime, API-key management or credential-read privileges.
+  BeanCS currently scopes this token to tenant 2 rather than an individual app;
+  do not share it outside this repository's trusted release workflow.
+- `REGISTRY_USERNAME` / `REGISTRY_PASSWORD`: a robot restricted to pull/push
+  in `reboot-earth-proj`, with no access to other registry projects.
+- Repository variable `BEANCS_API_URL=https://beancs.com` (not secret).
+
+The CI token and dedicated registry robots expire on 24 October 2027. Rotate them
+before expiry. The runtime pull robot is stored encrypted in BeanCS, not GitHub;
+rotate it there and refresh the deployment pull secrets as well. No SSH password,
+kubeconfig, registry administrator password or OpenAI key is copied to Actions.
+Actions are pinned to verified commit SHAs; review updates before changing them.
+
+Manual recovery still uses BeanCS release rollback. If the management API itself
+is unavailable, a workflow cannot guarantee rollback; restore API connectivity
+and inspect the failed workflow and cluster before retrying. Never delete the
+database namespace or PVC as a release recovery step.
 
 ## Data and recovery
 

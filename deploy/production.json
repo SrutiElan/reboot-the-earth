@@ -1,0 +1,16 @@
+{
+  "site_url": "https://reboot.hollowdata.com",
+  "environment_id": "07c1d57b-04f2-4d15-8cc3-4984f105837d",
+  "delivery_target_id": "c3005180-73dc-4128-a041-0462415fecad",
+  "artifact_connection_id": "ee14ae4f-80b9-4a26-8f6f-8245512a5af6",
+  "components": {
+    "backend": {
+      "id": "738dfaed-4975-4109-9c8c-cf498236579d",
+      "repository": "reboot-earth-proj/backend"
+    },
+    "frontend": {
+      "id": "eeb95a2a-17b2-4772-87e6-1d32fc80cfb4",
+      "repository": "reboot-earth-proj/frontend"
+    }
+  }
+}
