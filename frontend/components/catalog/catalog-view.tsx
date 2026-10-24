@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState } from "react";
 import { Maximize2Icon, Minimize2Icon, SparklesIcon } from "lucide-react";
+import { downloadRows } from "@/lib/api";
 import { ASSISTANT_NAME } from "@/lib/catalog/assistant";
 import { cn } from "@/lib/utils";
 import { useCatalog } from "./catalog-provider";
@@ -39,6 +40,7 @@ export function CatalogView() {
   const showQuery = activeAnswer !== hiddenAnswer;
   const hidden = results.length - visible.length;
   const tableFull = expanded === "table";
+  const count = tableFull || !mapReady ? results.length : visible.length;
 
   // The AI panel is part of the page on wide screens; narrow ones open it from the Ask AI button.
   useEffect(() => {
@@ -79,22 +81,35 @@ export function CatalogView() {
         <div className={cn("flex min-h-0 flex-1 flex-col bg-background", tableFull && "fixed inset-0 z-[1500]", expanded === "map" && "hidden")}>
           <div className="flex shrink-0 items-center gap-3 border-b py-2 pr-5 pl-3 text-[13px] text-muted-foreground">
             <ExpandButton label="table" on={tableFull} onClick={() => toggle("table")} />
-            <span className="min-w-0 flex-1 truncate" aria-live="polite" title={pick?.label || undefined}>
-              {pick && <SparklesIcon className="mr-1.5 inline size-3.5 align-[-2px] text-primary dark:text-drone-ink" aria-hidden />}
-              <span className="font-medium text-foreground tabular-nums">{(tableFull || !mapReady ? results.length : visible.length).toLocaleString()}</span>{" "}
-              {(tableFull || !mapReady ? results.length : visible.length) === 1 ? "result" : "results"}
-              {pick && <> from {ASSISTANT_NAME}</>}
-              {!tableFull && mapReady && hidden > 0 && <span> · {hidden.toLocaleString()} outside the map area</span>}
+            <span className="min-w-0 truncate" aria-live="polite" title={pick?.label || undefined}>
+              {activeAnswer?.data && showQuery ? (
+                <>
+                  <span className="font-medium text-foreground tabular-nums">{activeAnswer.data.row_count.toLocaleString()}</span> rows · {activeAnswer.data.elapsed_ms} ms
+                </>
+              ) : (
+                <>
+                  {pick && <SparklesIcon className="mr-1.5 inline size-3.5 align-[-2px] text-primary dark:text-drone-ink" aria-hidden />}
+                  <span className="font-medium text-foreground tabular-nums">{count.toLocaleString()}</span> {count === 1 ? "result" : "results"}
+                  {pick && <> from {ASSISTANT_NAME}</>}
+                  {!tableFull && mapReady && hidden > 0 && <span> · {hidden.toLocaleString()} outside the map area</span>}
+                </>
+              )}
             </span>
+            {activeAnswer?.data && (
+              <span className="flex shrink-0 gap-3 border-l pl-3">
+                <button type="button" aria-pressed={showQuery} onClick={() => setHiddenAnswer(null)} className={showQuery ? "font-semibold text-primary" : ""}>Query data</button>
+                <button type="button" aria-pressed={!showQuery} onClick={() => setHiddenAnswer(activeAnswer)} className={!showQuery ? "font-semibold text-primary" : ""}>Catalog datasets</button>
+              </span>
+            )}
+            <span className="flex-1" />
+            {activeAnswer?.data && showQuery && (
+              <button type="button" className="shrink-0 font-medium text-primary hover:underline dark:text-drone-ink" onClick={() => downloadRows(activeAnswer.data!.rows, activeAnswer.data!.columns, "ofo-query-results.csv")}>Export CSV</button>
+            )}
             <button type="button" onClick={clearAll} className="shrink-0 font-medium text-primary hover:underline dark:text-drone-ink">
               Show all
             </button>
           </div>
-          {activeAnswer?.data && <div className="flex shrink-0 gap-3 border-b px-5 py-2 text-sm">
-            <button type="button" aria-pressed={showQuery} onClick={() => setHiddenAnswer(null)} className={showQuery ? "font-semibold text-primary" : "text-muted-foreground"}>Query data ({activeAnswer.data.row_count})</button>
-            <button type="button" aria-pressed={!showQuery} onClick={() => setHiddenAnswer(activeAnswer)} className={!showQuery ? "font-semibold text-primary" : "text-muted-foreground"}>Catalog datasets</button>
-          </div>}
-          {activeAnswer?.data && showQuery ? <QueryResults data={activeAnswer.data} /> : <ResultsTable showAll={tableFull} />}
+          {activeAnswer?.data && showQuery ? <QueryResults data={activeAnswer.data} bare /> : <ResultsTable showAll={tableFull} />}
         </div>
       </div>
       {dockOpen && <AssistantDock />}
