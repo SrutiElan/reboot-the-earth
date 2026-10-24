@@ -118,10 +118,23 @@ Schema and actual values:\n{schema}
 """
 
 
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+def llm_settings() -> dict:
+    """Gemini (through its OpenAI-compatible endpoint) when GEMINI_API_KEY is set, otherwise OpenAI."""
+    if os.getenv("GEMINI_API_KEY"):
+        return {"provider": "gemini", "api_key": os.environ["GEMINI_API_KEY"], "model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash"), "base_url": GEMINI_BASE_URL}
+    return {"provider": "openai", "api_key": os.getenv("OPENAI_API_KEY"), "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "base_url": None}
+
+
 def build_chains(schema: str):
+    cfg = llm_settings()
     llm = ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-        use_responses_api=True,
+        model=cfg["model"],
+        api_key=cfg["api_key"],
+        base_url=cfg["base_url"],
+        use_responses_api=cfg["provider"] == "openai",
         timeout=60,
         max_retries=1,
         max_tokens=3000,
@@ -180,26 +193,29 @@ def resolve_actions(requested: list[Action], ids: list[str]) -> tuple[list[dict]
 
 
 def provider_error(exc: Exception) -> str:
+    cfg = llm_settings()
+    name = "Gemini" if cfg["provider"] == "gemini" else "OpenAI"
     if isinstance(exc, AuthenticationError):
-        return "OpenAI authentication failed. Check the backend OPENAI_API_KEY."
+        return f"{name} authentication failed. Check the backend {name.upper()}_API_KEY."
     if isinstance(exc, RateLimitError):
-        return "OpenAI quota or rate limit reached. Check your account quota and try again later."
+        return f"{name} quota or rate limit reached. Check your account quota and try again later."
     if isinstance(exc, (APIConnectionError, APITimeoutError)):
-        return "Could not reach OpenAI within the time limit. Please try again."
+        return f"Could not reach {name} within the time limit. Please try again."
     if isinstance(exc, APIStatusError):
-        return f"OpenAI request failed (HTTP {exc.status_code}). Check model access and backend configuration."
+        return f"{name} request failed (HTTP {exc.status_code}) for model {cfg['model']}. Check model access and backend configuration."
     return "The assistant could not complete the query. Please try again or use the SQL console."
 
 
 @router.get("/status")
 def assistant_status():
-    return {"configured": bool(os.getenv("OPENAI_API_KEY")), "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini")}
+    cfg = llm_settings()
+    return {"configured": bool(cfg["api_key"]), "model": cfg["model"], "provider": cfg["provider"]}
 
 
 @router.post("/query")
 async def assistant_query(payload: AssistantRequest, request: Request):
-    if not os.getenv("OPENAI_API_KEY"):
-        raise HTTPException(503, "Set OPENAI_API_KEY in backend/.env to enable the assistant.")
+    if not llm_settings()["api_key"]:
+        raise HTTPException(503, "Set GEMINI_API_KEY or OPENAI_API_KEY in backend/.env to enable the assistant.")
 
     async def events():
         def event(type_: str, **data):
@@ -218,7 +234,7 @@ async def assistant_query(payload: AssistantRequest, request: Request):
                 yield event("status", stage="planning", attempt=number, message=f"Writing SQL (attempt {number}/{maximum})…")
                 plan = await planner.ainvoke({**inputs, "attempts": json.dumps(attempts, ensure_ascii=False)})
                 if not plan.sql.strip():
-                    yield event("complete", answer={"text": plan.explanation, "preview": [], "apply": None, "actions": [], "ctx": [], "follow": [], "attempts": attempts, "data": None, "sql": None, "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "status": "clarification"})
+                    yield event("complete", answer={"text": plan.explanation, "preview": [], "apply": None, "actions": [], "ctx": [], "follow": [], "attempts": attempts, "data": None, "sql": None, "model": llm_settings()["model"], "status": "clarification"})
                     return
                 yield event("status", stage="querying", attempt=number, sql=plan.sql, message="Querying PostGIS…")
                 try:
@@ -243,9 +259,9 @@ async def assistant_query(payload: AssistantRequest, request: Request):
                 apply = {"ids": ids, "label": payload.question[:80]} if ids else None
                 if filters:
                     apply = {**(apply or {"label": payload.question[:80]}), "filters": filters}
-                yield event("complete", answer={"text": review.answer, "preview": ids[:3], "apply": apply, "actions": actions, "ctx": ids, "follow": review.follow[:3], "attempts": attempts, "data": result, "sql": plan.sql, "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "status": "usable" if result["rows"] else "empty"})
+                yield event("complete", answer={"text": review.answer, "preview": ids[:3], "apply": apply, "actions": actions, "ctx": ids, "follow": review.follow[:3], "attempts": attempts, "data": result, "sql": plan.sql, "model": llm_settings()["model"], "status": "usable" if result["rows"] else "empty"})
                 return
-            yield event("complete", answer={"text": "The query could not produce a verified result after the retry limit. Please refine the request or inspect the attempted SQL below.", "preview": [], "apply": None, "actions": [], "ctx": [], "follow": [], "attempts": attempts, "data": None, "sql": attempts[-1]["sql"] if attempts else None, "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "status": "failed"})
+            yield event("complete", answer={"text": "The query could not produce a verified result after the retry limit. Please refine the request or inspect the attempted SQL below.", "preview": [], "apply": None, "actions": [], "ctx": [], "follow": [], "attempts": attempts, "data": None, "sql": attempts[-1]["sql"] if attempts else None, "model": llm_settings()["model"], "status": "failed"})
         except asyncio.CancelledError:
             raise
         except Exception as exc:

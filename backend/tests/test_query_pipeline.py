@@ -83,7 +83,7 @@ class QueryPipelineTests(unittest.TestCase):
             async def ainvoke(inner, inputs):
                 self.assertGreater(json.loads(inputs["result"])["rows"][0]["tree_count"], 0)
                 return assistant.Review(decision="usable", feedback="", answer="Verified count", follow=[], actions=[])
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}), patch.object(assistant, "build_chains", return_value=(Planner(), Reviewer())):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only", "GEMINI_API_KEY": "test-only"}), patch.object(assistant, "build_chains", return_value=(Planner(), Reviewer())):
             events = self.stream_events("How many trees?")
         final = events[-1]["answer"]
         self.assertEqual(final["status"], "usable")
@@ -97,7 +97,7 @@ class QueryPipelineTests(unittest.TestCase):
         class Reviewer:
             async def ainvoke(inner, inputs):
                 return assistant.Review(decision="empty", feedback="No matching records", answer="No matching records", follow=[], actions=[])
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}), patch.object(assistant, "build_chains", return_value=(Planner(), Reviewer())):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only", "GEMINI_API_KEY": "test-only"}), patch.object(assistant, "build_chains", return_value=(Planner(), Reviewer())):
             events = self.stream_events("Trees with negative measured heights")
         self.assertEqual(events[-1]["answer"]["status"], "empty")
         self.assertEqual(len(events[-1]["answer"]["attempts"]), 2)
@@ -107,7 +107,7 @@ class QueryPipelineTests(unittest.TestCase):
         class Planner:
             async def ainvoke(inner, inputs):
                 return assistant.QueryPlan(response_language="English", sql="SELECT nonexistent_height FROM ofo_trees", explanation="Query")
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only", "AI_MAX_ATTEMPTS": "3"}), patch.object(assistant, "build_chains", return_value=(Planner(), None)):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only", "GEMINI_API_KEY": "test-only", "AI_MAX_ATTEMPTS": "3"}), patch.object(assistant, "build_chains", return_value=(Planner(), None)):
             events = self.stream_events("Query")
         self.assertEqual(events[-1]["answer"]["status"], "failed")
         self.assertEqual(len(events[-1]["answer"]["attempts"]), 3)
