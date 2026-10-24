@@ -290,8 +290,8 @@ export function DatasetView({ id }: { id: string }) {
         ];
 
   return (
-    <div className="flex flex-1 items-start">
-     <div className="min-w-0 flex-1">
+    <div className="flex h-[calc(100dvh-var(--nav-h))] min-h-0">
+     <div className="min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-3 px-5 pt-4">
         <nav aria-label="Breadcrumb" className="flex flex-1 flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
           <Link href="/data" className="text-foreground hover:underline">
@@ -457,7 +457,7 @@ export function DatasetView({ id }: { id: string }) {
       </div>
      </div>
      {dockOpen && (
-       <div className="max-md:fixed max-md:inset-x-0 max-md:top-[var(--nav-h)] max-md:bottom-0 max-md:z-[1080] md:sticky md:top-0 md:h-[calc(100dvh-var(--nav-h))] md:w-[380px] md:shrink-0">
+       <div className="max-md:fixed max-md:inset-x-0 max-md:top-[var(--nav-h)] max-md:bottom-0 max-md:z-[1080] md:flex md:shrink-0">
          <AssistantDock />
        </div>
      )}

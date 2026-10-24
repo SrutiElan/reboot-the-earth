@@ -38,6 +38,11 @@ export function TrustPanel({ d }: { d: Dataset }) {
   return (
     <section id="trust" className="scroll-mt-4">
       <Panel title="Trust checklist" action={<span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", LEVEL[t.level].badge)}>{LEVEL[t.level].label} · {t.passed}/{t.total}</span>}>
+        <p className="border-b px-5 py-3 text-[13px] leading-normal text-muted-foreground">
+          {d.kind === "ground"
+            ? "How safely can you treat this plot as ground truth for the drone imagery over it? Each line is one yes/no check."
+            : "How safely can you check this flight against measured trees on the ground? Each line is one yes/no check."}
+        </p>
         <ul>
           {t.checks.map((c) => (
             <li key={c.label} className="flex items-start gap-2.5 border-b border-border/60 px-5 py-2.5 text-sm last:border-0">

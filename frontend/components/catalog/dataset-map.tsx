@@ -14,7 +14,8 @@ export type TreeFeature = Feature<Point, TreeProps>;
 
 export interface MapOverlays {
   basemap: Basemap;
-  raster: { template: string; opacity: number; bounds: [[number, number], [number, number]] | null } | null;
+  /** Bottom to top. */
+  rasters: { template: string; opacity: number; bounds: [[number, number], [number, number]] | null }[];
   trees: { features: TreeFeature[]; style: TreeStyle } | null;
 }
 
@@ -52,24 +53,24 @@ export default function DatasetMap({ dataset, overlays }: { dataset: Dataset; ov
 
   // Basemap, raster and trees redraw without rebuilding the map. They share the map effect's deps so they
   // are re-added whenever the map is recreated.
-  const { basemap, raster, trees } = overlays;
+  const { basemap, rasters, trees } = overlays;
   useEffect(() => {
     const m = map.current;
     if (!m) return;
     const layers: L.Layer[] = [];
     const base = BASEMAPS[basemap];
     layers.push(L.tileLayer(base.url, { attribution: BASEMAP_ATTRIBUTION, maxNativeZoom: base.maxZoom, maxZoom: 21, zIndex: 1 }).addTo(m));
-    if (raster) {
+    rasters.forEach((raster, i) => {
       layers.push(
         L.tileLayer(raster.template, {
           opacity: raster.opacity,
           maxZoom: 21,
-          zIndex: 5,
+          zIndex: 5 + i,
           bounds: raster.bounds ?? undefined,
           attribution: "Imagery © Open Forest Observatory contributors",
         }).addTo(m),
       );
-    }
+    });
     if (trees) {
       const layer = L.geoJSON(trees.features, {
         pointToLayer: (f, latlng) => {
@@ -85,7 +86,7 @@ export default function DatasetMap({ dataset, overlays }: { dataset: Dataset; ov
       layers.push(layer);
     }
     return () => layers.forEach((l) => l.remove());
-  }, [catalog, dataset, dark, router, basemap, raster, trees]);
+  }, [catalog, dataset, dark, router, basemap, rasters, trees]);
 
   return <div ref={el} className="absolute inset-0" />;
 }
