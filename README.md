@@ -32,6 +32,36 @@ docker compose up -d --build
 Restart the backend after changing its environment: `docker compose restart backend`.
 See [backend/README.md](backend/README.md) for API, contribution schema and testing details.
 
+## Production deployment
+
+Build the frontend with `frontend/Dockerfile.prod` and an empty
+`NEXT_PUBLIC_API_URL` build argument. It runs the Next.js standalone server;
+route `/api` to the FastAPI service and all other paths to the frontend.
+Build the backend with `backend/Dockerfile` (no development reload or bind mounts).
+
+Use a private PostgreSQL/PostGIS service with a persistent volume and a strong
+database password. Set the backend `DATABASE_URL` through a Kubernetes Secret,
+then run `python scripts/import_ofo.py` once using the backend image before
+starting the API. The bundled source files are imported without replacing
+existing tables. Keep database backups separately from the application image.
+
+For an OpenAI-compatible relay such as APICred, configure these **server-only**
+Secret values; never expose the relay token as a `NEXT_PUBLIC_*` variable:
+
+```dotenv
+OPENAI_API_KEY=<application-specific relay token>
+OPENAI_BASE_URL=http://apicred-backend.apicred.svc.cluster.local:8103/v1
+OPENAI_USE_RESPONSES_API=false
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+Direct OpenAI access can leave `OPENAI_BASE_URL` empty and use
+`OPENAI_USE_RESPONSES_API=true`. Do not set `GEMINI_API_KEY` when selecting OpenAI:
+the assistant gives Gemini precedence when that variable is present.
+The production deployment is intentionally public, including AI usage and
+contribution imports; enforce sensible ingress request limits and retain the
+server's SQL read-only, timeout and upload-validation safeguards.
+
 ## Future contributions
 
 Open new pull requests against this repository's `main` branch. Existing clones

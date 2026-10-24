@@ -126,7 +126,7 @@ def llm_settings() -> dict:
     """Gemini (through its OpenAI-compatible endpoint) when GEMINI_API_KEY is set, otherwise OpenAI."""
     if os.getenv("GEMINI_API_KEY"):
         return {"provider": "gemini", "api_key": os.environ["GEMINI_API_KEY"], "model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash"), "base_url": GEMINI_BASE_URL}
-    return {"provider": "openai", "api_key": os.getenv("OPENAI_API_KEY"), "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "base_url": None}
+    return {"provider": "openai", "api_key": os.getenv("OPENAI_API_KEY"), "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "base_url": os.getenv("OPENAI_BASE_URL") or None}
 
 
 def build_chains(schema: str):
@@ -135,7 +135,7 @@ def build_chains(schema: str):
         model=cfg["model"],
         api_key=cfg["api_key"],
         base_url=cfg["base_url"],
-        use_responses_api=cfg["provider"] == "openai",
+        use_responses_api=cfg["provider"] == "openai" and os.getenv("OPENAI_USE_RESPONSES_API", "true").lower() == "true",
         timeout=60,
         max_retries=1,
         max_tokens=3000,

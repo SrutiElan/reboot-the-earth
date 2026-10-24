@@ -66,7 +66,9 @@ class AgentReview(BaseModel):
 
 
 async def review_with_ai(context: dict) -> AgentReview:
-    model = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), use_responses_api=True,
+    model = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+                       base_url=os.getenv("OPENAI_BASE_URL") or None,
+                       use_responses_api=os.getenv("OPENAI_USE_RESPONSES_API", "true").lower() == "true",
                        timeout=60, max_retries=1, max_tokens=2000)
     prompt = ChatPromptTemplate.from_messages([
         ("system", """Review a small forest-data contribution for an existing PostgreSQL/PostGIS database.
