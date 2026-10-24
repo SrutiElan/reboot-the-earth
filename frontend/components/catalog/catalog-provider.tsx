@@ -2,9 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { buildCatalog, type Catalog, type Bounds, type Dataset } from "@/lib/catalog";
+import { buildCatalog, type Catalog, type Bounds, type Dataset, type DatasetKind } from "@/lib/catalog";
 import { API_BASE, apiJson } from "@/lib/api";
-import { EMPTY_FILTERS, filterDatasets, inBounds, type Filters, type KindFilter } from "@/lib/catalog/filters";
+import { ALL_KINDS, EMPTY_FILTERS, filterDatasets, inBounds, type Filters } from "@/lib/catalog/filters";
 import { hasAssistantPanel, type Answer, type Apply } from "@/lib/catalog/assistant";
 
 export type ChatMessage = { role: "user"; text: string } | { role: "ai"; answer: Answer };
@@ -52,8 +52,10 @@ interface CatalogContext {
   filters: Filters;
   patchFilters: (patch: Partial<Filters>) => void;
   clearFilters: () => void;
-  kind: KindFilter;
-  setKind: (kind: KindFilter) => void;
+  /** Dataset types currently shown; never empty. */
+  kinds: DatasetKind[];
+  toggleKind: (kind: DatasetKind) => void;
+  setKinds: (kinds: DatasetKind[]) => void;
   query: string;
   setQuery: (q: string) => void;
   pick: { ids: Set<string>; label: string } | null;
@@ -134,7 +136,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   const catalog = useMemo(() => buildCatalog(datasets), [datasets]);
 
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [kind, setKind] = useState<KindFilter>("all");
+  const [kinds, setKinds] = useState<DatasetKind[]>(ALL_KINDS);
   const [query, setQuery] = useState("");
   const [pick, setPick] = useState<CatalogContext["pick"]>(null);
   const [bounds, setBounds] = useState<Bounds | null>(null);
@@ -200,8 +202,8 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   }, [messages, chatId]);
 
   const results = useMemo(
-    () => filterDatasets(catalog, { filters, query, kind, ids: pick?.ids }),
-    [catalog, filters, query, kind, pick],
+    () => filterDatasets(catalog, { filters, query, kinds, ids: pick?.ids }),
+    [catalog, filters, query, kinds, pick],
   );
   const visible = useMemo(() => results.filter((d) => inBounds(d, bounds)), [results, bounds]);
 
@@ -212,7 +214,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       setFilters({ ...EMPTY_FILTERS, ...apply.filters });
       setPick(apply.ids ? { ids: new Set(apply.ids), label: apply.label ?? "" } : null);
       setQuery(apply.query ?? "");
-      setKind("all");
+      setKinds(ALL_KINDS);
       setAppliedIdx(idx);
       setDockOpen(true);
       requestFit();
@@ -246,7 +248,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
         setPick(null);
         setFilters(EMPTY_FILTERS);
         setQuery("");
-        setKind("all");
+        setKinds(ALL_KINDS);
       }
       return done;
     },
@@ -352,8 +354,9 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     filters,
     patchFilters: (patch) => setFilters((f) => ({ ...f, ...patch })),
     clearFilters: () => setFilters(EMPTY_FILTERS),
-    kind,
-    setKind,
+    kinds,
+    setKinds,
+    toggleKind: (k) => setKinds((all) => (all.includes(k) ? (all.length > 1 ? all.filter((x) => x !== k) : all) : [...all, k])),
     query,
     setQuery,
     pick,
@@ -362,7 +365,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       setFilters(EMPTY_FILTERS);
       setPick(null);
       setQuery("");
-      setKind("all");
+      setKinds(ALL_KINDS);
       setActiveAnswer(null);
     },
     results,

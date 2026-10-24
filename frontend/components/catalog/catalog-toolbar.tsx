@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ClockIcon, MapPinIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react";
 import type { Bounds } from "@/lib/catalog";
-import { filterChips, type KindFilter } from "@/lib/catalog/filters";
+import { filterChips } from "@/lib/catalog/filters";
 import { plural } from "@/lib/catalog/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -12,14 +12,8 @@ import { FOCUS_SEARCH_EVENT } from "@/components/site-navbar";
 import { useStoredList } from "@/lib/use-stored-list";
 import { useCatalog } from "./catalog-provider";
 import { ActiveFilters } from "./active-filters";
-import { KindMark } from "./kind-mark";
+import { KindPicker } from "./kind-picker";
 import { CatalogSwitcher } from "./catalog-switcher";
-
-const KINDS: { value: KindFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "drone", label: "Drone" },
-  { value: "ground", label: "Ground" },
-];
 
 const RECENT_KEY = "ofo.recent-searches.v1";
 const MAX_RECENT = 8;
@@ -219,14 +213,14 @@ function PlaceSearch() {
 }
 
 export function CatalogToolbar() {
-  const { filters, kind, setKind, setSheet, setDockOpen } = useCatalog();
+  const { filters, setKinds, setSheet, setDockOpen } = useCatalog();
   const chips = filterChips(filters);
   const params = useSearchParams();
   const kindParam = params.get("kind");
   const aiParam = params.get("ai");
   useEffect(() => {
-    if (kindParam === "drone" || kindParam === "ground") setKind(kindParam);
-  }, [kindParam, setKind]);
+    if (kindParam === "drone" || kindParam === "ground") setKinds([kindParam]);
+  }, [kindParam, setKinds]);
   useEffect(() => {
     if (aiParam) setDockOpen(true);
   }, [aiParam, setDockOpen]);
@@ -236,22 +230,8 @@ export function CatalogToolbar() {
       <div className="flex flex-wrap items-center gap-2">
         <PlaceSearch />
 
-        <div role="radiogroup" aria-label="Dataset type" className="flex h-[38px] rounded-lg border border-input p-[3px] lg:hidden">
-          {KINDS.map((k) => (
-            <button
-              key={k.value}
-              role="radio"
-              aria-checked={kind === k.value}
-              onClick={() => setKind(k.value)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium",
-                kind === k.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {k.value !== "all" && <KindMark kind={k.value} className="size-[7px]" />}
-              {k.label}
-            </button>
-          ))}
+        <div className="lg:hidden">
+          <KindPicker inline />
         </div>
 
         <Button variant="outline" className="h-[38px] gap-2 px-3 lg:hidden" onClick={() => setSheet("filters")}>

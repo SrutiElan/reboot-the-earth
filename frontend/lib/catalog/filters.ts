@@ -1,4 +1,4 @@
-import type { Catalog, Bounds, Dataset } from ".";
+import type { Catalog, Bounds, Dataset, DatasetKind } from ".";
 
 export interface Filters {
   yFrom: string;
@@ -30,7 +30,7 @@ export const EMPTY_FILTERS: Filters = {
   repeat: false,
 };
 
-export type KindFilter = "all" | "drone" | "ground";
+export const ALL_KINDS: DatasetKind[] = ["drone", "ground"];
 
 interface Option {
   value: string;
@@ -227,14 +227,14 @@ function passes(d: Dataset, f: Filters, q: string, catalog: Catalog): boolean {
 export interface Query {
   filters: Filters;
   query?: string;
-  kind?: KindFilter;
+  kinds?: DatasetKind[];
   ids?: Set<string> | null;
 }
 
-export function filterDatasets(catalog: Catalog, { filters, query = "", kind = "all", ids = null }: Query): Dataset[] {
+export function filterDatasets(catalog: Catalog, { filters, query = "", kinds = ALL_KINDS, ids = null }: Query): Dataset[] {
   const q = query.trim().toLowerCase();
   return catalog.all.filter(
-    (d) => (kind === "all" || d.kind === kind) && (!ids || ids.has(d.id)) && passes(d, filters, q, catalog),
+    (d) => kinds.includes(d.kind) && (!ids || ids.has(d.id)) && passes(d, filters, q, catalog),
   );
 }
 
