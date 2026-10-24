@@ -25,7 +25,7 @@ const LOGO =
 const MENU = [
   { href: "/data", label: "Data" },
   { href: "/data/sql", label: "SQL console" },
-  { href: "/data/upload", label: "Contribute data" },
+  { href: "/data/upload", label: "Contribute" },
   { href: "https://openforestobservatory.org/tools/", label: "Tools" },
   { href: "https://openforestobservatory.org/get-involved/", label: "Get Involved" },
   { href: "https://openforestobservatory.org/about/", label: "About" },

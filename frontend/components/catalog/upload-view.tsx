@@ -113,7 +113,7 @@ export function UploadView() {
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-5 pt-10 pb-24">
       <header className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm font-medium text-primary">Community contributions / JSON v1.0</p>
+          <p className="text-sm font-medium text-primary">Contribute / JSON v1.0</p>
           <Link href="/data/catalog" className="text-sm text-primary underline underline-offset-4">Browse the catalog</Link>
         </div>
         <h1 className="text-[clamp(36px,5vw,52px)] leading-[1.05] font-semibold tracking-[-0.03em]">Bring your forest data.</h1>

@@ -10,6 +10,7 @@ export interface Filters {
   overlap: boolean;
   noWithheld: boolean;
   license: string;
+  source: string;
   minDbh: string;
   snags: boolean;
   repeat: boolean;
@@ -25,6 +26,7 @@ export const EMPTY_FILTERS: Filters = {
   overlap: false,
   noWithheld: false,
   license: "",
+  source: "",
   minDbh: "",
   snags: false,
   repeat: false,
@@ -40,13 +42,24 @@ interface Option {
 // The sidebar and the mobile filter sheet both render from this list: add, remove or reorder sections here.
 export type FilterSection =
   | { type: "year-range"; label: string }
-  | { type: "segmented"; key: "camera" | "alt" | "area" | "minDbh"; label: string; options: Option[]; chip: string }
+  | { type: "segmented"; key: "camera" | "alt" | "area" | "minDbh" | "source"; label: string; options: Option[]; chip: string }
   | { type: "select"; key: "aircraft" | "license"; label: string; anyLabel: string; options: Option[] }
   | { type: "divider" }
   | { type: "switch"; key: "overlap" | "noWithheld" | "snags" | "repeat"; label: string; description: string; chip: string };
 
 export const FILTER_SECTIONS: FilterSection[] = [
   { type: "year-range", label: "Year collected" },
+  {
+    type: "segmented",
+    key: "source",
+    label: "Data source",
+    chip: "",
+    options: [
+      { value: "", label: "Any" },
+      { value: "ofo", label: "OFO" },
+      { value: "community", label: "Contributed" },
+    ],
+  },
   {
     type: "segmented",
     key: "camera",
@@ -187,6 +200,7 @@ function passes(d: Dataset, f: Filters, q: string, catalog: Catalog): boolean {
   if (f.yFrom && (d.year === null || d.year < +f.yFrom)) return false;
   if (f.yTo && (d.year === null || d.year > +f.yTo)) return false;
   if (f.overlap && !d.overlaps.length) return false;
+  if (f.source && (f.source === "community") !== (d.submissionId !== null)) return false;
   if (f.license && d.license !== f.license) return false;
   if (f.noWithheld && d.withheld) return false;
   if (f.repeat && !hasRepeatCoverage(d, catalog)) return false;
@@ -218,7 +232,7 @@ function passes(d: Dataset, f: Filters, q: string, catalog: Catalog): boolean {
   if (f.snags && !d.includesSnags) return false;
   // Drone-only filters keep the ground plots covered by a matching mission.
   if (f.camera || f.aircraft || f.alt || f.area) {
-    const droneOnly = { ...f, overlap: false, yFrom: "", yTo: "", license: "", minDbh: "", snags: false, repeat: false };
+    const droneOnly = { ...f, overlap: false, yFrom: "", yTo: "", license: "", source: "", minDbh: "", snags: false, repeat: false };
     return d.overlaps.some((id) => { const mission = catalog.byId(id); return !!mission && passes(mission, droneOnly, "", catalog); });
   }
   return true;
