@@ -244,6 +244,8 @@ export function DatasetView({ id }: { id: string }) {
       .slice(0, 8);
   }, [catalog, d]);
 
+  const nearbyRecords = useMemo(() => nearby.map((n) => n.x), [nearby]);
+
   // Tell the assistant which record is open so "this plot" questions work.
   useEffect(() => {
     if (!d) return;
@@ -332,6 +334,9 @@ export function DatasetView({ id }: { id: string }) {
             </div>
           </header>
 
+          <DatasetMapPanel dataset={d} nearby={nearbyRecords} />
+          {nearbyRecords.length > 0 && <p className="-mt-3 text-xs text-muted-foreground">Dashed outlines on the map are nearby records within {NEARBY_KM} km; click one to open it.</p>}
+
           <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-4">
             {stats.map((x) => (
               <div key={x.k} className="bg-card px-5 py-4">
@@ -344,8 +349,6 @@ export function DatasetView({ id }: { id: string }) {
 
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <div className="flex min-w-0 flex-col gap-5">
-              <DatasetMapPanel dataset={d} />
-
               <section id="timeline" className="scroll-mt-4 overflow-hidden rounded-xl border bg-card">
                 <div role="tablist" aria-label="Related records and context" className="flex overflow-x-auto border-b px-2">
                   {tabs.map((t) => (

@@ -57,7 +57,7 @@ function boundsOf(d: Dataset): [[number, number], [number, number]] | null {
 /** Stacking order, bottom to top: the photo sits under the two measured surfaces. */
 const STACK: RasterKey[] = ["ortho", "dsm", "chm"];
 
-export function DatasetMapPanel({ dataset }: { dataset: Dataset }) {
+export function DatasetMapPanel({ dataset, nearby }: { dataset: Dataset; nearby?: Dataset[] }) {
   const { catalog } = useCatalog();
   const [open, setOpen] = useState(true);
   const frame = useRef<HTMLDivElement>(null);
@@ -138,8 +138,8 @@ export function DatasetMapPanel({ dataset }: { dataset: Dataset }) {
   };
 
   return (
-    <div ref={frame} className={cn("relative isolate overflow-hidden rounded-xl border bg-surface", fullscreen ? "h-screen rounded-none" : "h-[30rem]")}>
-      <DatasetMap dataset={dataset} overlays={overlays} />
+    <div ref={frame} className={cn("relative isolate overflow-hidden rounded-xl border bg-surface", fullscreen ? "h-screen rounded-none" : "h-[32rem] lg:h-[40rem]")}>
+      <DatasetMap dataset={dataset} overlays={overlays} nearby={nearby} />
 
       <button
         type="button"
