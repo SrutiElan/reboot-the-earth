@@ -122,15 +122,28 @@ Schema and actual values:\n{schema}
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
-def llm_settings() -> dict:
-    """Gemini (through its OpenAI-compatible endpoint) when GEMINI_API_KEY is set, otherwise OpenAI."""
+def provider_settings() -> list[dict]:
+    """Configured providers in order of preference: Gemini (through its OpenAI-compatible endpoint), then OpenAI."""
+    found = []
     if os.getenv("GEMINI_API_KEY"):
-        return {"provider": "gemini", "api_key": os.environ["GEMINI_API_KEY"], "model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash"), "base_url": GEMINI_BASE_URL}
-    return {"provider": "openai", "api_key": os.getenv("OPENAI_API_KEY"), "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "base_url": os.getenv("OPENAI_BASE_URL") or None}
+        found.append({"provider": "gemini", "api_key": os.environ["GEMINI_API_KEY"], "model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash"), "base_url": GEMINI_BASE_URL})
+    if os.getenv("OPENAI_API_KEY"):
+        found.append({"provider": "openai", "api_key": os.environ["OPENAI_API_KEY"], "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "base_url": os.getenv("OPENAI_BASE_URL") or None})
+    return found
+
+
+def llm_settings() -> dict:
+    found = provider_settings()
+    return found[0] if found else {"provider": "openai", "api_key": None, "model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"), "base_url": os.getenv("OPENAI_BASE_URL") or None}
 
 
 def build_chains(schema: str):
-    cfg = llm_settings()
+    """Chains on the preferred provider; if it errors (overloaded, rate limited) the next configured one is tried."""
+    built = [build_provider_chains(schema, cfg) for cfg in provider_settings() or [llm_settings()]]
+    return tuple(built[0][i].with_fallbacks([b[i] for b in built[1:]]) if len(built) > 1 else built[0][i] for i in range(2))
+
+
+def build_provider_chains(schema: str, cfg: dict):
     llm = ChatOpenAI(
         model=cfg["model"],
         api_key=cfg["api_key"],

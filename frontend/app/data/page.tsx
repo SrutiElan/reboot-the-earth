@@ -37,12 +37,12 @@ export default function DataLanding() {
             <Button asChild className="h-11 px-[22px] text-[15px] hover:bg-primary-hover">
               <Link href="/data/catalog">View data</Link>
             </Button>
-            <Button asChild variant="outline" className="h-11 gap-2 px-[22px] text-[15px]">
+            {/* <Button asChild variant="outline" className="h-11 gap-2 px-[22px] text-[15px]">
               <Link href="/data/catalog?ai=1">
                 <SparklesIcon className="size-4 text-primary dark:text-drone-ink" />
                 Ask {ASSISTANT_NAME}
               </Link>
-            </Button>
+            </Button> */}
             <Button asChild variant="outline" className="h-11 px-[22px] text-[15px]">
               <Link href="/data/sql">SQL console</Link>
             </Button>
