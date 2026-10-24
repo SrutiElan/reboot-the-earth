@@ -24,7 +24,7 @@ export function CollectionSheet() {
 
   return (
     <Sheet open={sheet === "collection"} onOpenChange={(o) => setSheet(o ? "collection" : null)}>
-      <SheetContent className="w-full gap-0 sm:max-w-[420px]">
+      <SheetContent belowNav className="w-full gap-0 sm:max-w-[420px]">
         <SheetHeader className="border-b px-6 pt-5 pb-4">
           <SheetTitle className="text-lg font-semibold">Collection</SheetTitle>
           <SheetDescription>{plural(items.length, "dataset")}</SheetDescription>

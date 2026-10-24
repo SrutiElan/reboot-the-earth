@@ -81,6 +81,8 @@ interface CatalogContext {
 
   collection: string[];
   toggleCollection: (id: string) => void;
+  /** Add (on) or remove (off) many records at once. */
+  setInCollection: (ids: string[], on: boolean) => void;
   sheet: "filters" | "collection" | null;
   setSheet: (s: "filters" | "collection" | null) => void;
 
@@ -378,6 +380,8 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     hoverId,
     setHoverId,
     collection,
+    setInCollection: (ids, on) =>
+      setCollection((c) => (on ? [...c, ...ids.filter((id) => !c.includes(id))] : c.filter((id) => !ids.includes(id)))),
     toggleCollection: (id) => setCollection((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id])),
     sheet,
     setSheet,

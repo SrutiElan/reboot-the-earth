@@ -44,7 +44,7 @@ const COLUMNS: { key?: SortKey; label: string; align?: "right" }[] = [
 ];
 
 export function ResultsTable({ showAll = false }: { showAll?: boolean }) {
-  const { visible: inMapArea, mapReady: boundsKnown, results, hoverId, setHoverId, collection, toggleCollection, clearAll } = useCatalog();
+  const { visible: inMapArea, mapReady: boundsKnown, results, hoverId, setHoverId, collection, toggleCollection, setInCollection, clearAll } = useCatalog();
   const visible = showAll ? results : inMapArea;
   const mapReady = showAll || boundsKnown;
   const router = useRouter();
@@ -61,6 +61,9 @@ export function ResultsTable({ showAll = false }: { showAll?: boolean }) {
     return out;
   }, [visible, sort, mapReady]);
 
+  const picked = rows.filter((d) => collection.includes(d.id)).length;
+  const allPicked = rows.length > 0 && picked === rows.length;
+
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" || key === "kind" ? 1 : -1 }));
 
@@ -71,7 +74,13 @@ export function ResultsTable({ showAll = false }: { showAll?: boolean }) {
           <thead className="sticky top-0 z-[1] bg-background text-left text-muted-foreground">
             <tr>
               <th className="w-11 border-b py-2 pl-5">
-                <span className="sr-only">In collection</span>
+                <Checkbox
+                  checked={allPicked ? true : picked > 0 ? "indeterminate" : false}
+                  disabled={rows.length === 0}
+                  onCheckedChange={() => setInCollection(rows.map((d) => d.id), !allPicked)}
+                  aria-label={allPicked ? "Remove all listed datasets from collection" : "Add all listed datasets to collection"}
+                  className="data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground"
+                />
               </th>
               {COLUMNS.map((c, i) => {
                 const active = c.key && sort.key === c.key;

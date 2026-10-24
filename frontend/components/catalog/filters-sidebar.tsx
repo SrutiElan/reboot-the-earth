@@ -23,7 +23,7 @@ export function FiltersSidebar() {
     <aside aria-label="Filters" className="hidden w-[280px] shrink-0 flex-col border-r bg-background lg:flex">
       <div className="shrink-0 border-b">
         <div className="flex items-baseline gap-2 px-5 py-3">
-          <h2 className="flex-1 text-[15px] font-semibold">Filters</h2>
+          <h2 className="flex-1 text-lg font-semibold tracking-[-0.01em]">Filters</h2>
           {active > 0 && (
             <button type="button" onClick={clearFilters} className="text-[13px] font-medium text-primary hover:underline dark:text-drone-ink">
               Clear all

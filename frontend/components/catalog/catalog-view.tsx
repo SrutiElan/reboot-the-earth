@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState } from "react";
-import { MaximizeIcon, MinimizeIcon, SparklesIcon } from "lucide-react";
+import { Maximize2Icon, Minimize2Icon, SparklesIcon } from "lucide-react";
 import { ASSISTANT_NAME } from "@/lib/catalog/assistant";
 import { cn } from "@/lib/utils";
 import { useCatalog } from "./catalog-provider";
@@ -27,7 +27,7 @@ function ExpandButton({ label, on, onClick, className }: { label: string; on: bo
       aria-pressed={on}
       className={cn("flex size-[30px] items-center justify-center rounded-lg border border-input bg-popover text-muted-foreground hover:text-foreground", className)}
     >
-      {on ? <MinimizeIcon className="size-3.5" /> : <MaximizeIcon className="size-3.5" />}
+      {on ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}
     </button>
   );
 }
@@ -89,7 +89,8 @@ export function CatalogView() {
               </button>
             </div>
           )}
-          <div className="flex shrink-0 items-center gap-3 border-b px-5 py-2 text-[13px] text-muted-foreground">
+          <div className="flex shrink-0 items-center gap-3 border-b py-2 pr-5 pl-3 text-[13px] text-muted-foreground">
+            <ExpandButton label="table" on={tableFull} onClick={() => toggle("table")} />
             <span className="min-w-0 flex-1 truncate" aria-live="polite">
               {tableFull ? (
                 <>
@@ -104,7 +105,6 @@ export function CatalogView() {
               )}
               <span className="hidden sm:inline"> · click a row to open, hover to find it on the map</span>
             </span>
-            <ExpandButton label="table" on={tableFull} onClick={() => toggle("table")} />
           </div>
           {activeAnswer?.data && <div className="flex shrink-0 gap-3 border-b px-5 py-2 text-sm">
             <button type="button" aria-pressed={showQuery} onClick={() => setHiddenAnswer(null)} className={showQuery ? "font-semibold text-primary" : "text-muted-foreground"}>Query data ({activeAnswer.data.row_count})</button>
