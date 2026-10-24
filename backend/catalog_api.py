@@ -21,6 +21,8 @@ router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
 CATALOG_VIEW = """
 CREATE OR REPLACE VIEW catalog_datasets AS
+SELECT d.*, COALESCE(s.title, 'OFO') AS source_name, s.id::text AS submission_id, r.external_id
+FROM (
 SELECT 'drone-' || m.mission_id AS dataset_id, m.mission_id AS source_id,
        'drone'::text AS kind,
        COALESCE(NULLIF(m.contributor_dataset_name, ''), m.mission_id) AS name,
@@ -57,12 +59,21 @@ SELECT 'ground-' || p.plot_id, p.plot_id, 'ground',
        (SELECT count(*) FROM ofo_trees t WHERE t.plot_id = p.plot_id),
        p.top_species, COALESCE(p.survey_date_approx, true), p.geom
 FROM ofo_plots p
+) d
+LEFT JOIN submission_records r ON r.source_id = d.source_id
+    AND ((d.kind = 'ground' AND r.record_kind = 'plot') OR (d.kind = 'drone' AND r.record_kind = 'mission'))
+LEFT JOIN data_submissions s ON s.id = r.submission_id AND s.status = 'imported'
 """
 
 
 @asynccontextmanager
 async def lifespan(app):
+    try:
+        from .uploads import initialize_upload_tables
+    except ImportError:
+        from uploads import initialize_upload_tables
     with engine.begin() as conn:
+        initialize_upload_tables(conn)
         conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_ofo_trees_plot_id ON ofo_trees (plot_id)")
         conn.exec_driver_sql(CATALOG_VIEW)
         conn.exec_driver_sql("""DO $$ BEGIN
@@ -81,6 +92,7 @@ def catalog_records() -> list[dict]:
             SELECT dataset_id, source_id, kind, name, project_name, date, year,
                    latitude, longitude, area_ha, altitude_m, camera_pitch, image_count,
                    aircraft, withheld, oblique, tree_count, species, date_approximate,
+                   source_name, submission_id, external_id,
                    ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.00001), 7)::json AS geometry
             FROM catalog_datasets ORDER BY date DESC NULLS LAST, dataset_id
         """)).mappings().all()
@@ -101,7 +113,10 @@ def catalog_records() -> list[dict]:
             "year": row["year"], "lat": row["latitude"], "lng": row["longitude"],
             "overlaps": overlaps.get(row["dataset_id"], []), "geometry": row["geometry"],
             "dateApproximate": row["date_approximate"],
+            "sourceLabel": row["source_name"], "submissionId": row["submission_id"],
         }
+        if row["submission_id"] and row["kind"] == "ground":
+            base["name"] = f"{row['project_name']} / Plot {row['external_id']}"
         if row["kind"] == "drone":
             base.update(areaHa=row["area_ha"], altitudeM=row["altitude_m"],
                         cameraPitch=row["camera_pitch"], imageCount=row["image_count"],
@@ -117,7 +132,7 @@ def get_catalog():
     items = catalog_records()
     with engine.connect() as conn:
         trees = conn.execute(text("SELECT count(*) FROM ofo_trees")).scalar_one()
-    return {"datasets": items, "tree_count": trees, "source": "OFO / PostgreSQL + PostGIS"}
+    return {"datasets": items, "tree_count": trees, "source": "Forest catalog / PostgreSQL + PostGIS"}
 
 
 def dataset_rows(dataset_id: str):
@@ -129,6 +144,13 @@ def dataset_rows(dataset_id: str):
         row = conn.execute(text(f"SELECT to_jsonb(d) - 'geom' AS metadata, ST_AsGeoJSON(geom)::json AS geometry FROM {table} d WHERE {key} = :id"), {"id": source_id}).mappings().first()
         if row is None:
             raise HTTPException(404, "Dataset not found")
+        origin = conn.execute(text("""SELECT s.id::text AS submission_id, s.title, s.imported_at,
+            s.normalized_payload->>'contributor' AS contributor, s.normalized_payload->>'source_url' AS source_url,
+            s.normalized_payload->>'license' AS license, r.external_id
+            FROM submission_records r JOIN data_submissions s ON s.id=r.submission_id
+            WHERE r.record_kind=:kind AND r.source_id=:id AND s.status='imported'"""),
+            {"kind": "mission" if kind == "drone" else "plot", "id": source_id}).mappings().first()
+        row = {**row, "metadata": {**row["metadata"], "contribution_source": dict(origin) if origin else None}}
         trees = []
         if kind == "ground":
             trees = conn.execute(text("SELECT to_jsonb(t) - 'geom' AS properties, ST_AsGeoJSON(geom)::json AS geometry FROM ofo_trees t WHERE plot_id = :id"), {"id": source_id}).mappings().all()

@@ -6,6 +6,8 @@ export type DatasetKind = "drone" | "ground";
 interface DatasetBase {
   id: string;
   sourceId: string;
+  sourceLabel: string;
+  submissionId: string | null;
   name: string;
   site: string;
   /** Source date precision is preserved: YYYY, YYYY-MM, or YYYY-MM-DD. */

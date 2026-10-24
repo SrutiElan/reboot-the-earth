@@ -102,3 +102,74 @@ docker compose exec -T backend python -m unittest discover -s tests -v
 # Optional real OpenAI error-repair check (uses the configured account):
 docker compose exec -T -e RUN_LIVE_AI_TEST=1 backend python -m unittest tests.test_query_pipeline.QueryPipelineTests.test_live_model_repairs_database_error -v
 ```
+
+## Third-party JSON contributions
+
+Open `http://localhost:3000/data/upload`. The versioned contract is defined in
+`upload_schema.py` and served as JSON Schema at `GET /api/uploads/schema`;
+`GET /api/uploads/template` downloads a complete example. The page accepts a
+UTF-8 JSON file or pasted JSON, up to 1 MiB (200 plots / 5,000 trees / 200 missions).
+
+A v1.0 package has this shape (replace the example metadata and measurements):
+
+```json
+{
+  "schema_version": "1.0",
+  "package_id": "your-survey-2026-01",
+  "title": "Community forest survey",
+  "project_name": "Community Survey 2026",
+  "contributor": "Your organization",
+  "license": "CC-BY-4.0",
+  "rights_confirmed": true,
+  "crs": "EPSG:4326",
+  "units": { "height": "m", "dbh": "cm" },
+  "plots": [{ "plot_id": "P01", "survey_date": "2026-01-15", "longitude": -120.1862, "latitude": 39.4064 }],
+  "trees": [{ "tree_id": "T01", "plot_id": "P01", "longitude": -120.1862, "latitude": 39.4064, "height": 8.2, "dbh": 22.4, "species_code": "PIJE", "live_dead": "L" }],
+  "missions": []
+}
+```
+
+At least one record is required. Tree `plot_id` values reference plots in the same
+package. All coordinates are WGS84; GeoJSON boundaries are Polygon/MultiPolygon
+with `[longitude, latitude]` positions. A plot may supply just its measured center;
+the application does not invent missing area or footprint geometry. Missions require
+a footprint. Dates use `YYYY-MM-DD`. Heights normalize to meters, DBH to centimeters.
+Unknown measurements stay null, but each tree needs at least one height or DBH.
+Allowed declared height units: `m`, `cm`, `ft`; DBH units: `cm`, `mm`, `in`.
+Source attribution includes contributor, optional source URL, and one of
+`CC0-1.0`, `CC-BY-4.0`, `CC-BY-SA-4.0` with explicit rights confirmation.
+
+`POST /api/uploads/review` performs full server validation, proposes deterministic
+safe transformations, and asks the real OpenAI/LangChain agent to accept/reject the
+package and select the detected cleaning operations. Only allowlisted functions
+execute; model-generated code and SQL cannot be run. The final cleaned package is
+validated again. The model sees metadata, aggregate profiles and at most ten example
+records per type; all records undergo schema, units, geometry and relation checks.
+This is compatibility screening, not verification of scientific authenticity.
+
+Supported cleaning: trim text; parse numeric/boolean strings; optional blanks to null;
+uppercase provided species codes; normalize known live/dead labels; unambiguous
+`YYYY/MM/DD` dates; declared unit conversions; close otherwise valid polygon rings.
+Coordinates, measurements, unknown species, CRS and ambiguous units/dates are never
+guessed. Unsupported issues are rejected. Missing API credentials/provider failures
+produce a retryable review error and cannot authorize an import.
+
+Reviews persist in `data_submissions` with original JSON, its SHA-256, normalized
+JSON and audit. `GET /api/uploads` lists recent reports; `GET /api/uploads/{id}`
+retrieves a report. The `/normalized` and `/audit` endpoints download the complete
+approved package and complete before/after changes (the UI previews 200 changes).
+
+`POST /api/uploads/{id}/import` imports only approved stored data, revalidates it,
+and inserts all records in one transaction. Original OFO records are not overwritten.
+Namespaced IDs, an import lock, package-ID uniqueness and idempotent repeat requests
+prevent accidental duplicate imports. `submission_records` retains per-record
+provenance; catalog, maps, exports and AI queries immediately include imported rows.
+`catalog_datasets.source_name` / `submission_id` distinguish contributions from OFO.
+
+These endpoints share the local-only development deployment. Authentication,
+contributor ownership and moderation roles are required before public deployment.
+
+```bash
+docker compose exec -T backend python -m unittest tests.test_uploads -v
+docker compose exec -T -e RUN_LIVE_AI_TEST=1 backend python -m unittest tests.test_uploads.UploadTests.test_live_ai_cleaning_review -v
+```

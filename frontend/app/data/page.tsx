@@ -42,6 +42,9 @@ export default function DataLanding() {
             <Button asChild variant="outline" className="h-11 px-[22px] text-[15px]">
               <Link href="/data/sql">SQL console</Link>
             </Button>
+            <Button asChild variant="outline" className="h-11 px-[22px] text-[15px]">
+              <Link href="/data/upload">Contribute data</Link>
+            </Button>
           </div>
         </div>
         <figure className="flex flex-col gap-2">

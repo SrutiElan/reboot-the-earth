@@ -36,9 +36,11 @@ class QueryPipelineTests(unittest.TestCase):
         result = execute_query("SELECT current_user AS role, COUNT(*) AS trees FROM ofo_trees")
         self.assertEqual(result["rows"][0]["role"], "ofo_reader")
         self.assertGreater(result["rows"][0]["trees"], 0)
-        spatial = execute_query("SELECT plot_id FROM ofo_trees WHERE height <= 10 AND ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(-120.1862197, 39.40647418),4326)::geography,100)")
+        spatial = execute_query("SELECT plot_id, height, ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(-120.1862197, 39.40647418),4326)::geography) AS distance_m FROM ofo_trees WHERE height <= 10 AND ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(-120.1862197, 39.40647418),4326)::geography,100) ORDER BY plot_id")
         self.assertGreater(spatial["row_count"], 0)
-        self.assertTrue(all(r["plot_id"] == "0014" for r in spatial["rows"]))
+        # Contributions may legitimately overlap the original OFO plot.
+        self.assertIn("0014", {r["plot_id"] for r in spatial["rows"]})
+        self.assertTrue(all(r["height"] <= 10 and 0 <= r["distance_m"] <= 100.00001 for r in spatial["rows"]))
         self.assertEqual(execute_query("SELECT COUNT(*) AS count FROM ofo_trees WHERE height < 0")["rows"][0]["count"], 0)
 
     def test_limit_types_and_duplicate_columns(self):

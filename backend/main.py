@@ -12,11 +12,13 @@ try:
     from .db import get_db
     from .catalog_api import lifespan, router as catalog_router
     from .assistant import router as assistant_router
+    from .uploads import router as uploads_router
     from .sql_service import QueryError, execute_query
 except ImportError:  # Supports running `uvicorn main:app` from this directory.
     from db import get_db
     from catalog_api import lifespan, router as catalog_router
     from assistant import router as assistant_router
+    from uploads import router as uploads_router
     from sql_service import QueryError, execute_query
 
 
@@ -28,6 +30,7 @@ app = FastAPI(
 
 app.include_router(catalog_router)
 app.include_router(assistant_router)
+app.include_router(uploads_router)
 
 app.add_middleware(
     CORSMiddleware,

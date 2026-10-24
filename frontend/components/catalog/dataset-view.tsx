@@ -117,7 +117,7 @@ export function DatasetView({ id }: { id: string }) {
           <div className="flex min-w-0 flex-col gap-5">
             <Panel title="Details">
               <dl className="grid gap-x-5 gap-y-3.5 p-5 [grid-template-columns:repeat(auto-fill,minmax(150px,1fr))]">
-                {details(d).map((x) => (
+                {[{ k: "Data source", v: d.sourceLabel }, ...details(d)].map((x) => (
                   <div key={x.k}>
                     <dt className="text-xs text-muted-foreground">{x.k}</dt>
                     <dd className="mt-0.5 text-sm font-medium tabular-nums">{x.v}</dd>
