@@ -2,6 +2,7 @@
 
 import { FILTER_SECTIONS, filterChips, type FilterSection } from "@/lib/catalog/filters";
 import { plural } from "@/lib/catalog/format";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
