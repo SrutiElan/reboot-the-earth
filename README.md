@@ -45,22 +45,25 @@ then run `python scripts/import_ofo.py` once using the backend image before
 starting the API. The bundled source files are imported without replacing
 existing tables. Keep database backups separately from the application image.
 
-For an OpenAI-compatible relay such as APICred, configure these **server-only**
-Secret values; never expose the relay token as a `NEXT_PUBLIC_*` variable:
+Production is available at [reboot.hollowdata.com](https://reboot.hollowdata.com/data/catalog).
+Configure OpenAI through these **server-only** Secret values; never expose an
+API key as a `NEXT_PUBLIC_*` variable:
 
 ```dotenv
-OPENAI_API_KEY=<application-specific relay token>
-OPENAI_BASE_URL=http://apicred-backend.apicred.svc.cluster.local:8103/v1
-OPENAI_USE_RESPONSES_API=false
+OPENAI_API_KEY=<your OpenAI API key>
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_USE_RESPONSES_API=true
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-Direct OpenAI access can leave `OPENAI_BASE_URL` empty and use
-`OPENAI_USE_RESPONSES_API=true`. Do not set `GEMINI_API_KEY` when selecting OpenAI:
+The live site connects directly to OpenAI, not APICred. An optional OpenAI-compatible
+Chat Completions relay can instead set its own base URL/token and
+`OPENAI_USE_RESPONSES_API=false`. Do not set `GEMINI_API_KEY` when selecting OpenAI:
 the assistant gives Gemini precedence when that variable is present.
 The production deployment is intentionally public, including AI usage and
 contribution imports; enforce sensible ingress request limits and retain the
 server's SQL read-only, timeout and upload-validation safeguards.
+See [the production runbook](docs/DEPLOYMENT.md) for infrastructure and update details.
 
 ## Future contributions
 
