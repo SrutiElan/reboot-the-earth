@@ -70,6 +70,24 @@ class DeliveryTests(unittest.TestCase):
             deliver(client, CONFIG, DIGESTS, "c" * 40, "v1", "run:1", verify=Mock(side_effect=DeliveryError("unhealthy")), waiter=Mock())
         self.assertEqual(sum(path.endswith("/rollback") for path, _, _ in client.calls), 2)
 
+    def test_short_native_rollout_timeout_retries_same_immutable_release(self):
+        client = FakeBeanCS()
+        waiter = Mock(side_effect=[DeliveryError("deployment rollout timeout for ns/backend"), None, None])
+        deliver(client, CONFIG, DIGESTS, "c" * 40, "v1", "run:1", verify=Mock(), waiter=waiter)
+        runs = [body for path, method, body in client.calls if path == "/deployment-runs" and method == "POST"]
+        self.assertEqual([r["idempotency_key"] for r in runs], ["run:1:backend", "run:1:backend:retry:1", "run:1:frontend"])
+        self.assertEqual([r["release_id"] for r in runs], ["new-backend", "new-backend", "new-frontend"])
+        self.assertEqual(sum(path == "/releases" for path, _, _ in client.calls), 2)
+        self.assertFalse(any(path.endswith("/rollback") for path, _, _ in client.calls))
+
+    def test_rollout_retries_are_bounded_then_rollback(self):
+        client = FakeBeanCS()
+        waiter = Mock(side_effect=[DeliveryError("deployment rollout timeout")] * 3 + [None])
+        with self.assertRaisesRegex(DeliveryError, "previous releases restored"):
+            deliver(client, CONFIG, DIGESTS, "c" * 40, "v1", "run:1", verify=Mock(), waiter=waiter)
+        self.assertEqual(sum(path == "/deployment-runs" for path, _, _ in client.calls), 3)
+        self.assertEqual(sum(path.endswith("/rollback") for path, _, _ in client.calls), 1)
+
     def test_next_release_uses_actual_rollback_target_not_newest_release(self):
         client = FakeBeanCS()
         original = client.request

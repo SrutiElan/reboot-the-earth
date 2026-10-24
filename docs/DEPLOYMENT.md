@@ -81,6 +81,11 @@ The automatic chain is:
    configuration without spending model tokens. If rollout or verification
    fails, request rollback to the previous successful releases and fail the run.
 
+BeanCS's native rollout readiness window is two minutes. First-time image pulls
+can exceed it, so the workflow retries a reported rollout timeout up to twice,
+reapplying the same immutable release without restarting its downloading pod.
+Other deployment errors fail immediately; persistent timeouts still roll back.
+
 Track progress in [GitHub Actions](https://github.com/zeturn/reboot-earth-proj/actions)
 and BeanCS deployment history. Successful workflow summaries include the exact
 commit, image digests and BeanCS release IDs. Database volumes, secrets and user

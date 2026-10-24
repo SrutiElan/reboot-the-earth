@@ -165,10 +165,24 @@ def deliver(client, config: dict, digests: dict[str, str], revision: str, tag: s
             })
             # Include unknown-outcome dispatches in rollback handling.
             attempted.append((name, release["id"]))
-            run = client.request("/deployment-runs", "POST", {
-                "release_id": release["id"], "idempotency_key": delivery_key + ":" + name,
-            })["deployment_run"]
-            waiter(client, run["id"])
+            # BeanCS's native Kubernetes adapter waits only two minutes. A
+            # first image download may take longer. Reapply the SAME immutable
+            # release (without restarting its pod) at most twice; never retry
+            # arbitrary configuration/authentication errors or unknown outcomes.
+            for attempt in range(3):
+                suffix = "" if attempt == 0 else ":retry:" + str(attempt)
+                run = client.request("/deployment-runs", "POST", {
+                    "release_id": release["id"],
+                    "idempotency_key": delivery_key + ":" + name + suffix,
+                })["deployment_run"]
+                try:
+                    waiter(client, run["id"])
+                    break
+                except DeliveryError as error:
+                    if attempt == 2 or "deployment rollout timeout" not in str(error):
+                        raise
+                    print(f"Retrying {name} rollout after BeanCS's short readiness window "
+                          f"({attempt + 1}/2); image digest and release unchanged", flush=True)
             records[name] = {"release_id": release["id"], "deployment_run_id": run["id"],
                              "digest": digests[name]}
         counts = verify(config["site_url"])
