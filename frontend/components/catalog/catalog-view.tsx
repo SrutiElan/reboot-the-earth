@@ -33,7 +33,7 @@ function ExpandButton({ label, on, onClick, className }: { label: string; on: bo
 }
 
 export function CatalogView() {
-  const { dockOpen, setDockOpen, catalogLoading, catalogError, reloadCatalog, activeAnswer, results, visible, mapReady, pick, clearPick } = useCatalog();
+  const { dockOpen, setDockOpen, catalogLoading, catalogError, reloadCatalog, activeAnswer, results, visible, mapReady, pick, clearAll } = useCatalog();
   const [hiddenAnswer, setHiddenAnswer] = useState<typeof activeAnswer>(null);
   const [expanded, setExpanded] = useState<Expanded>(null);
   const showQuery = activeAnswer !== hiddenAnswer;
@@ -77,34 +77,18 @@ export function CatalogView() {
         </div>
 
         <div className={cn("flex min-h-0 flex-1 flex-col bg-background", tableFull && "fixed inset-0 z-[1500]", expanded === "map" && "hidden")}>
-          {pick && (
-            <div className="flex shrink-0 items-center gap-3 border-b bg-selected px-5 py-2 text-[13px]">
-              <SparklesIcon className="size-3.5 shrink-0 text-primary dark:text-drone-ink" aria-hidden />
-              <span className="min-w-0 flex-1 truncate">
-                Showing {pick.ids.size.toLocaleString()} records from {ASSISTANT_NAME}
-                {pick.label ? <span className="text-muted-foreground">: {pick.label}</span> : null}
-              </span>
-              <button type="button" onClick={clearPick} className="shrink-0 font-medium text-primary hover:underline dark:text-drone-ink">
-                Show all
-              </button>
-            </div>
-          )}
           <div className="flex shrink-0 items-center gap-3 border-b py-2 pr-5 pl-3 text-[13px] text-muted-foreground">
             <ExpandButton label="table" on={tableFull} onClick={() => toggle("table")} />
-            <span className="min-w-0 flex-1 truncate" aria-live="polite">
-              {tableFull ? (
-                <>
-                  <span className="font-medium text-foreground tabular-nums">{results.length.toLocaleString()}</span> {results.length === 1 ? "dataset" : "datasets"}
-                </>
-              ) : (
-                <>
-                  <span className="font-medium text-foreground tabular-nums">{(mapReady ? visible.length : results.length).toLocaleString()}</span>{" "}
-                  {mapReady && visible.length === 1 ? "dataset" : "datasets"} in map area
-                  {mapReady && hidden > 0 && <span> · {hidden.toLocaleString()} more outside it</span>}
-                </>
-              )}
-              <span className="hidden sm:inline"> · click a row to open, hover to find it on the map</span>
+            <span className="min-w-0 flex-1 truncate" aria-live="polite" title={pick?.label || undefined}>
+              {pick && <SparklesIcon className="mr-1.5 inline size-3.5 align-[-2px] text-primary dark:text-drone-ink" aria-hidden />}
+              <span className="font-medium text-foreground tabular-nums">{(tableFull || !mapReady ? results.length : visible.length).toLocaleString()}</span>{" "}
+              {(tableFull || !mapReady ? results.length : visible.length) === 1 ? "result" : "results"}
+              {pick && <> from {ASSISTANT_NAME}</>}
+              {!tableFull && mapReady && hidden > 0 && <span> · {hidden.toLocaleString()} outside the map area</span>}
             </span>
+            <button type="button" onClick={clearAll} className="shrink-0 font-medium text-primary hover:underline dark:text-drone-ink">
+              Show all
+            </button>
           </div>
           {activeAnswer?.data && <div className="flex shrink-0 gap-3 border-b px-5 py-2 text-sm">
             <button type="button" aria-pressed={showQuery} onClick={() => setHiddenAnswer(null)} className={showQuery ? "font-semibold text-primary" : "text-muted-foreground"}>Query data ({activeAnswer.data.row_count})</button>

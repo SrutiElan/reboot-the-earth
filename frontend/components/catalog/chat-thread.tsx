@@ -67,6 +67,15 @@ export function ChatThread() {
               <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-3.5" role="group" aria-label="Confirm before applying">
                 <p className="text-[13px] font-medium">Apply these to the catalog?</p>
                 <ul className="flex flex-col gap-2 text-[13px]">
+                  {a.apply && !a.actions.some((x) => x.type === "set_filters") && (
+                    <li className="flex flex-wrap gap-1.5">
+                      {a.apply.ids && <span className="rounded-full border bg-background px-2.5 py-0.5 text-xs font-medium">{plural(a.apply.ids.length, "result")} on the map</span>}
+                      {a.apply.query && <span className="rounded-full border bg-background px-2.5 py-0.5 text-xs font-medium">Search: {a.apply.query}</span>}
+                      {filterChips({ ...EMPTY_FILTERS, ...a.apply.filters }).map((c) => (
+                        <span key={c.id} className="rounded-full border bg-background px-2.5 py-0.5 text-xs font-medium">{c.label}</span>
+                      ))}
+                    </li>
+                  )}
                   {a.actions.map((x, n) => (
                     <li key={n}>
                       {x.type === "set_filters" && (

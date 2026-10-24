@@ -310,7 +310,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
             a.actions ??= [];
             const idx = messages.length + 1;
             // Filters change what the user is looking at, so they wait for a confirmation.
-            const needsConfirm = a.actions.some((x) => x.type === "set_filters");
+            const needsConfirm = a.actions.some((x) => x.type === "set_filters") || (!!a.apply && onCatalogPage());
             const shown = needsConfirm ? { ...a, pending: true } : a;
             setMessages((m) => [...m, { role: "ai", answer: shown }]);
             setActiveAnswer(a.data ? shown : null);
