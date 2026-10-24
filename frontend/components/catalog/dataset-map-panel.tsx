@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDownIcon, LayersIcon } from "lucide-react";
+import { LayersIcon } from "lucide-react";
 import type { Geometry } from "geojson";
 import type { Dataset, DroneMission } from "@/lib/catalog";
 import { apiJson, datasetFileUrl } from "@/lib/api";
@@ -125,18 +125,29 @@ export function DatasetMapPanel({ dataset }: { dataset: Dataset }) {
     <div className="relative isolate h-[30rem] overflow-hidden rounded-xl border bg-surface">
       <DatasetMap dataset={dataset} overlays={overlays} />
 
-      {/* One box: the header row collapses the body, so the layers and their toggle are the same object. */}
-      <div className="absolute top-3 right-3 z-[1000] flex max-h-[calc(100%-1.5rem)] w-[248px] flex-col overflow-hidden rounded-lg border bg-popover text-xs shadow-[0_2px_8px_rgba(0,0,0,0.12)]">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          className="flex h-9 shrink-0 items-center gap-2 px-3 text-left text-[13px] font-semibold hover:bg-muted/60"
-        >
-          <LayersIcon className="size-3.5" aria-hidden />
-          <span className="flex-1">Map layers</span>
-          <ChevronDownIcon className={cn("size-4 text-muted-foreground transition-transform", !open && "-rotate-90")} aria-hidden />
-        </button>
+      {/* One box: collapsed it is just the layers icon; open, the same icon sits in the header and closes it. */}
+      <div
+        className={cn(
+          "absolute top-3 right-3 z-[1000] flex max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-lg border bg-popover text-xs shadow-[0_2px_8px_rgba(0,0,0,0.12)]",
+          open && "w-[248px]",
+        )}
+      >
+        <div className="flex shrink-0 items-center">
+          {open && <span className="flex-1 pl-3 text-[13px] font-semibold">Map layers</span>}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-label={open ? "Hide map layers" : "Show map layers"}
+            title={open ? "Hide map layers" : "Map layers"}
+            className={cn(
+              "flex size-[30px] shrink-0 items-center justify-center text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              open && "text-foreground",
+            )}
+          >
+            <LayersIcon className="size-4" aria-hidden />
+          </button>
+        </div>
 
         {open && (
           <div className="flex flex-col gap-4 overflow-y-auto border-t p-3">
