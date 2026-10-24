@@ -2,12 +2,38 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { buildCatalog, type Catalog, type Bounds, type Dataset } from "@/lib/catalog";
+import { buildCatalog, type Catalog, type Bounds, type Dataset, type DatasetKind } from "@/lib/catalog";
 import { API_BASE, apiJson } from "@/lib/api";
-import { EMPTY_FILTERS, filterDatasets, inBounds, type Filters, type KindFilter } from "@/lib/catalog/filters";
-import type { Answer, Apply } from "@/lib/catalog/assistant";
+import { ALL_KINDS, EMPTY_FILTERS, filterDatasets, inBounds, type Filters } from "@/lib/catalog/filters";
+import { hasAssistantPanel, type Answer, type Apply } from "@/lib/catalog/assistant";
 
 export type ChatMessage = { role: "user"; text: string } | { role: "ai"; answer: Answer };
+
+export interface SavedChat {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
+const CHATS_KEY = "ofo.chats.v1";
+const MAX_CHATS = 30;
+const MAX_SAVED_ROWS = 50;
+
+/** Saved chats keep the conversation but not the full result tables or retry traces. */
+function slimMessage(m: ChatMessage): ChatMessage {
+  if (m.role === "user") return m;
+  const { data } = m.answer;
+  return {
+    role: "ai",
+    answer: {
+      ...m.answer,
+      attempts: [],
+      pending: false,
+      data: data && { ...data, rows: data.rows.slice(0, MAX_SAVED_ROWS), truncated: data.truncated || data.rows.length > MAX_SAVED_ROWS },
+    },
+  };
+}
 
 export interface MapView {
   center: [number, number];
@@ -26,8 +52,10 @@ interface CatalogContext {
   filters: Filters;
   patchFilters: (patch: Partial<Filters>) => void;
   clearFilters: () => void;
-  kind: KindFilter;
-  setKind: (kind: KindFilter) => void;
+  /** Dataset types currently shown; never empty. */
+  kinds: DatasetKind[];
+  toggleKind: (kind: DatasetKind) => void;
+  setKinds: (kinds: DatasetKind[]) => void;
   query: string;
   setQuery: (q: string) => void;
   pick: { ids: Set<string>; label: string } | null;
@@ -46,12 +74,17 @@ interface CatalogContext {
   /** Bumped whenever the map should zoom to fit the results */
   fitToken: number;
   requestFit: () => void;
+  /** Move the map to a box (a searched place) without filtering the catalog. */
+  flyTarget: { bounds: Bounds; token: number } | null;
+  flyTo: (bounds: Bounds) => void;
 
   hoverId: string | null;
   setHoverId: (id: string | null) => void;
 
   collection: string[];
   toggleCollection: (id: string) => void;
+  /** Add (on) or remove (off) many records at once. */
+  setInCollection: (ids: string[], on: boolean) => void;
   sheet: "filters" | "collection" | null;
   setSheet: (s: "filters" | "collection" | null) => void;
 
@@ -59,10 +92,22 @@ interface CatalogContext {
   busy: boolean;
   dockOpen: boolean;
   setDockOpen: (open: boolean) => void;
+  /** The record whose page is open, so the assistant can answer "this plot" questions. */
+  focus: { id: string; text: string } | null;
+  setFocus: (focus: { id: string; text: string } | null) => void;
   appliedIdx: number;
   ask: (question: string) => void;
   applyAnswer: (apply: Apply, idx: number) => void;
+  /** Run the actions an answer proposed (filters need this confirmation first). */
+  confirmAnswer: (messageIdx: number) => void;
+  dismissAnswer: (messageIdx: number) => void;
+  chats: SavedChat[];
+  chatId: string | null;
+  loadChat: (id: string) => void;
+  deleteChat: (id: string) => void;
   newChat: () => void;
+  /** Remove what an assistant answer added to the collection. */
+  undoAdd: (messageIdx: number) => void;
 }
 
 const Ctx = createContext<CatalogContext | null>(null);
@@ -91,17 +136,19 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   const catalog = useMemo(() => buildCatalog(datasets), [datasets]);
 
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [kind, setKind] = useState<KindFilter>("all");
+  const [kinds, setKinds] = useState<DatasetKind[]>(ALL_KINDS);
   const [query, setQuery] = useState("");
   const [pick, setPick] = useState<CatalogContext["pick"]>(null);
   const [bounds, setBounds] = useState<Bounds | null>(null);
   const [fitToken, setFitToken] = useState(0);
+  const [flyTarget, setFlyTarget] = useState<{ bounds: Bounds; token: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [collection, setCollection] = useState<string[]>([]);
   const [sheet, setSheet] = useState<CatalogContext["sheet"]>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [dockOpen, setDockOpen] = useState(false);
+  const [focus, setFocus] = useState<{ id: string; text: string } | null>(null);
   const [appliedIdx, setAppliedIdx] = useState(-1);
   const mapView = useRef<MapView | null>(null);
   const pathnameRef = useRef(pathname);
@@ -109,6 +156,13 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     pathnameRef.current = pathname;
   }, [pathname]);
   const convo = useRef<string[]>([]);
+  const [chats, setChats] = useState<SavedChat[]>([]);
+  const [chatsLoaded, setChatsLoaded] = useState(false);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const collectionRef = useRef<string[]>([]);
+  useEffect(() => {
+    collectionRef.current = collection;
+  }, [collection]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -126,9 +180,30 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => () => controller.current?.abort(), []);
 
+  // Chat history lives in this browser only.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CHATS_KEY) ?? "[]");
+      if (Array.isArray(saved)) setChats(saved);
+    } catch {}
+    setChatsLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!chatsLoaded) return;
+    try {
+      localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+    } catch {}
+  }, [chats, chatsLoaded]);
+  useEffect(() => {
+    if (!messages.length || !chatId) return;
+    const title = (messages.find((m) => m.role === "user") as { text: string } | undefined)?.text.slice(0, 60) ?? "Chat";
+    const saved: SavedChat = { id: chatId, title, updatedAt: Date.now(), messages: messages.map(slimMessage) };
+    setChats((all) => [saved, ...all.filter((c) => c.id !== chatId)].slice(0, MAX_CHATS));
+  }, [messages, chatId]);
+
   const results = useMemo(
-    () => filterDatasets(catalog, { filters, query, kind, ids: pick?.ids }),
-    [catalog, filters, query, kind, pick],
+    () => filterDatasets(catalog, { filters, query, kinds, ids: pick?.ids }),
+    [catalog, filters, query, kinds, pick],
   );
   const visible = useMemo(() => results.filter((d) => inBounds(d, bounds)), [results, bounds]);
 
@@ -139,13 +214,56 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       setFilters({ ...EMPTY_FILTERS, ...apply.filters });
       setPick(apply.ids ? { ids: new Set(apply.ids), label: apply.label ?? "" } : null);
       setQuery(apply.query ?? "");
-      setKind("all");
+      setKinds(ALL_KINDS);
       setAppliedIdx(idx);
       setDockOpen(true);
       requestFit();
       if (pathnameRef.current !== "/data/catalog") router.push("/data/catalog");
     },
     [router, requestFit],
+  );
+
+  /** Perform an answer's actions and mark which records it added to the collection. */
+  const onCatalogPage = () => pathnameRef.current === "/data/catalog";
+
+  const runAnswer = useCallback(
+    (a: Answer, idx: number): Answer => {
+      const adds = a.actions.flatMap((x) => (x.type === "add_to_collection" ? x.ids : []));
+      let done = a;
+      if (adds.length) {
+        const have = new Set(collectionRef.current);
+        const added = [...new Set(adds)].filter((id) => !have.has(id));
+        done = { ...a, added };
+        setCollection((c) => [...c, ...added]);
+        setMessages((all) => all.map((m, i) => (i === idx && m.role === "ai" ? { role: "ai", answer: done } : m)));
+      }
+      const open = a.actions.find((x) => x.type === "open_dataset");
+      if (open) {
+        setDockOpen(true);
+        router.push(`/data/datasets/${open.dataset_id}#timeline`);
+      } else if (!onCatalogPage()) {
+        // On a record page the answer stays in the panel; "Show on the map" is the user's call.
+      } else if (a.apply) applyAnswer(a.apply, idx);
+      else {
+        setPick(null);
+        setFilters(EMPTY_FILTERS);
+        setQuery("");
+        setKinds(ALL_KINDS);
+      }
+      return done;
+    },
+    [router, applyAnswer],
+  );
+
+  const resolveAnswer = useCallback(
+    (idx: number, accept: boolean) => {
+      const m = messages[idx];
+      if (m?.role !== "ai" || !m.answer.pending) return;
+      const base = { ...m.answer, pending: false, dismissed: !accept };
+      setMessages((all) => all.map((x, i) => (i === idx ? { role: "ai", answer: base } : x)));
+      if (accept) runAnswer(base, idx);
+    },
+    [messages, runAnswer],
   );
 
   const ask = useCallback(
@@ -155,20 +273,21 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       inFlight.current = true;
       const abort = new AbortController();
       controller.current = abort;
+      setChatId((id) => id ?? crypto.randomUUID());
       setMessages((m) => [...m, { role: "user", text: q }]);
       setBusy(true);
       setActiveAnswer(null);
       setProgress("Connecting to the assistant…");
       setDockOpen(true);
       setSheet(null);
-      if (pathname !== "/data/catalog") router.push("/data/catalog");
+      if (!hasAssistantPanel(pathname)) router.push("/data/catalog");
       try {
         const history = messages.slice(-20).map((m) => m.role === "user"
           ? { role: "user", content: m.text }
           : { role: "assistant", content: `${m.answer.text}\nSQL: ${m.answer.sql ?? ""}`.slice(0, 6000) });
         const response = await fetch(`${API_BASE}/api/assistant/query`, {
           method: "POST", headers: { "Content-Type": "application/json" }, signal: abort.signal,
-          body: JSON.stringify({ question: q, history, context_ids: convo.current }),
+          body: JSON.stringify({ question: q, history, context_ids: focus ? [focus.id, ...convo.current].slice(0, 50) : convo.current, focus: focus?.text ?? "" }),
         });
         if (!response.ok) {
           const body = await response.json().catch(() => null);
@@ -188,10 +307,14 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
             const a = event.answer;
             completed = true;
             convo.current = a.ctx;
-            setMessages((m) => [...m, { role: "ai", answer: a }]);
-            setActiveAnswer(a.data ? a : null);
-            if (a.apply) applyAnswer(a.apply, messages.length + 1);
-            else { setPick(null); setFilters(EMPTY_FILTERS); setQuery(""); setKind("all"); }
+            a.actions ??= [];
+            const idx = messages.length + 1;
+            // Filters change what the user is looking at, so they wait for a confirmation.
+            const needsConfirm = a.actions.some((x) => x.type === "set_filters");
+            const shown = needsConfirm ? { ...a, pending: true } : a;
+            setMessages((m) => [...m, { role: "ai", answer: shown }]);
+            setActiveAnswer(a.data ? shown : null);
+            if (!needsConfirm) runAnswer(a, idx);
           }
         };
         while (true) {
@@ -208,7 +331,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (!abort.signal.aborted) {
           setMessages((m) => [...m, { role: "ai", answer: {
-            text: error instanceof Error ? error.message : "The assistant is unavailable", preview: [], apply: null,
+            text: error instanceof Error ? error.message : "The assistant is unavailable", preview: [], apply: null, actions: [],
             ctx: [], follow: [], data: null, sql: null, attempts: [], status: "failed",
           } }]);
         }
@@ -221,7 +344,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [messages, pathname, router, applyAnswer],
+    [messages, pathname, router, runAnswer, focus],
   );
 
   const value: CatalogContext = {
@@ -231,8 +354,9 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     filters,
     patchFilters: (patch) => setFilters((f) => ({ ...f, ...patch })),
     clearFilters: () => setFilters(EMPTY_FILTERS),
-    kind,
-    setKind,
+    kinds,
+    setKinds,
+    toggleKind: (k) => setKinds((all) => (all.includes(k) ? (all.length > 1 ? all.filter((x) => x !== k) : all) : [...all, k])),
     query,
     setQuery,
     pick,
@@ -241,7 +365,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       setFilters(EMPTY_FILTERS);
       setPick(null);
       setQuery("");
-      setKind("all");
+      setKinds(ALL_KINDS);
       setActiveAnswer(null);
     },
     results,
@@ -254,9 +378,13 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     },
     fitToken,
     requestFit,
+    flyTarget,
+    flyTo: (bounds) => setFlyTarget((t) => ({ bounds, token: (t?.token ?? 0) + 1 })),
     hoverId,
     setHoverId,
     collection,
+    setInCollection: (ids, on) =>
+      setCollection((c) => (on ? [...c, ...ids.filter((id) => !c.includes(id))] : c.filter((id) => !ids.includes(id)))),
     toggleCollection: (id) => setCollection((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id])),
     sheet,
     setSheet,
@@ -264,20 +392,57 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     busy,
     dockOpen,
     setDockOpen,
+    focus,
+    setFocus,
     appliedIdx,
     ask,
     applyAnswer,
+    undoAdd: (messageIdx) => {
+      const message = messages[messageIdx];
+      if (message?.role !== "ai" || !message.answer.added?.length) return;
+      const remove = new Set(message.answer.added);
+      setCollection((c) => c.filter((id) => !remove.has(id)));
+      setMessages((all) => all.map((m, i) => (i === messageIdx && m.role === "ai" ? { role: "ai", answer: { ...m.answer, added: [], undone: true } } : m)));
+    },
+    confirmAnswer: (idx) => resolveAnswer(idx, true),
+    dismissAnswer: (idx) => resolveAnswer(idx, false),
+    chats,
+    chatId,
+    loadChat: (id) => {
+      const chat = chats.find((c) => c.id === id);
+      if (!chat) return;
+      controller.current?.abort();
+      inFlight.current = false;
+      setBusy(false);
+      setProgress("");
+      setMessages(chat.messages);
+      setChatId(id);
+      setAppliedIdx(-1);
+      setActiveAnswer(null);
+      const last = chat.messages.findLast((m) => m.role === "ai");
+      convo.current = last?.role === "ai" ? last.answer.ctx : [];
+      setDockOpen(true);
+    },
+    deleteChat: (id) => {
+      setChats((all) => all.filter((c) => c.id !== id));
+      if (id === chatId) {
+        setMessages([]);
+        setChatId(null);
+        convo.current = [];
+        setActiveAnswer(null);
+      }
+    },
+    // Starts a fresh conversation in the same panel; no page change.
     newChat: () => {
       controller.current?.abort();
+      inFlight.current = false;
+      setBusy(false);
+      setProgress("");
       setMessages([]);
+      setChatId(null);
       setAppliedIdx(-1);
-      setDockOpen(false);
-      setPick(null);
-      setFilters(EMPTY_FILTERS);
-      setQuery("");
       convo.current = [];
       setActiveAnswer(null);
-      router.push("/data/assistant");
     },
   };
 

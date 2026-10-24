@@ -25,33 +25,34 @@ function Section({ section }: { section: FilterSection }) {
   const { catalog, filters, patchFilters } = useCatalog();
 
   switch (section.type) {
-    case "year-range":
+    case "year-range": {
+      const backwards = !!filters.yFrom && !!filters.yTo && +filters.yFrom > +filters.yTo;
       return (
         <div className="flex flex-col gap-2">
           <SectionLabel>{section.label}</SectionLabel>
           <div className="grid grid-cols-2 gap-2">
             {(["yFrom", "yTo"] as const).map((key) => (
-              <Select
+              <input
                 key={key}
-                value={filters[key] || ANY}
-                onValueChange={(v) => patchFilters({ [key]: v === ANY ? "" : v })}
-              >
-                <SelectTrigger className="h-[38px] w-full" aria-label={key === "yFrom" ? "From year" : "To year"}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>{key === "yFrom" ? "From any year" : "To any year"}</SelectItem>
-                  {catalog.years.map((y) => (
-                    <SelectItem key={y} value={String(y)}>
-                      {key === "yFrom" ? "From" : "To"} {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                type="number"
+                inputMode="numeric"
+                min={1900}
+                max={2100}
+                value={filters[key]}
+                placeholder={key === "yFrom" ? "From year" : "To year"}
+                aria-label={key === "yFrom" ? "From year" : "To year"}
+                aria-invalid={backwards || undefined}
+                onChange={(e) => patchFilters({ [key]: e.target.value.slice(0, 4) })}
+                className="h-[38px] w-full rounded-lg border border-input bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-red-600 dark:bg-input/30"
+              />
             ))}
           </div>
+          <p className={backwards ? "text-xs text-red-700 dark:text-red-300" : "text-xs text-muted-foreground"}>
+            {backwards ? "The first year is after the last year." : "Type any year; leave a box empty for no limit."}
+          </p>
         </div>
       );
+    }
     case "segmented":
       return (
         <div className="flex flex-col gap-2">
@@ -90,7 +91,7 @@ function Section({ section }: { section: FilterSection }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ANY}>{section.anyLabel}</SelectItem>
-              {catalog.aircraft.map((a) => ({ value: a, label: a })).map((o) => (
+              {(section.key === "license" ? catalog.licenses : catalog.aircraft).map((a) => ({ value: a, label: a })).map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>
@@ -121,25 +122,34 @@ function Section({ section }: { section: FilterSection }) {
   }
 }
 
+/** The filter controls, shared by the sidebar and the mobile sheet. */
+export function FilterControls() {
+  return (
+    <>
+      {FILTER_SECTIONS.map((s, i) => (
+        <Section key={i} section={s} />
+      ))}
+      <p className="text-[13px] leading-normal text-muted-foreground">
+        Camera, altitude, area and aircraft describe drone missions; smallest tree and snags describe ground plots.
+        A record stays in the results when something that overlaps it matches.
+      </p>
+    </>
+  );
+}
+
 export function FiltersSheet() {
   const { sheet, setSheet, filters, clearFilters, results } = useCatalog();
   const active = filterChips(filters).length;
 
   return (
     <Sheet open={sheet === "filters"} onOpenChange={(o) => setSheet(o ? "filters" : null)}>
-      <SheetContent className="w-full gap-0 sm:max-w-[420px]">
+      <SheetContent belowNav className="w-full gap-0 sm:max-w-[420px]">
         <SheetHeader className="border-b px-6 pt-5 pb-4">
           <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
           <SheetDescription>{active ? `${active} active` : "No active filters"}</SheetDescription>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-5">
-          {FILTER_SECTIONS.map((s, i) => (
-            <Section key={i} section={s} />
-          ))}
-          <p className="text-[13px] leading-normal text-muted-foreground">
-            Camera, altitude, area and aircraft describe drone missions. Ground plots stay in the results when a
-            matching mission covers them.
-          </p>
+          <FilterControls />
         </div>
         <SheetFooter className="grid grid-cols-[1fr_1.4fr] gap-2 border-t px-6 py-4">
           <Button variant="outline" className="h-10" onClick={clearFilters}>

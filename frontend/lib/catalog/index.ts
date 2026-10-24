@@ -8,6 +8,7 @@ export interface Catalog {
   siteNames: string[];
   years: number[];
   aircraft: string[];
+  licenses: string[];
   byId: (id: string) => Dataset | undefined;
 }
 
@@ -20,6 +21,7 @@ export function buildCatalog(all: Dataset[]): Catalog {
     siteNames: [...new Set(all.map((d) => d.site))].sort(),
     years: [...new Set(all.map((d) => d.year).filter((y): y is number => y !== null))].sort((a, b) => a - b),
     aircraft: [...new Set(missions.map((d) => d.aircraft).filter((a): a is string => !!a))].sort(),
+    licenses: [...new Set(all.map((d) => d.license).filter((l): l is string => !!l))].sort(),
     byId: (id) => index.get(id),
   };
 }
