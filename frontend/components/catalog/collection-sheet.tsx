@@ -18,7 +18,8 @@ export function CollectionSheet() {
   const python = `import requests\n\nurls = ${JSON.stringify(items.map((d) => datasetFileUrl(d.id, "metadata.json")), null, 2)}\nitems = [requests.get(url).json() for url in urls]`;
 
   const downloadManifest = () => {
-    downloadRows(items.map((d) => ({ id: d.id, name: d.name, type: d.kind, project: d.site, date: d.date, metadata_url: datasetFileUrl(d.id, "metadata.json") })), ["id", "name", "type", "project", "date", "metadata_url"], "ofo-collection.csv");
+    const columns = ["id", "name", "type", "project", "date", "license", "contributors", "metadata_url"];
+    downloadRows(items.map((d) => ({ id: d.id, name: d.name, type: d.kind, project: d.site, date: d.date, license: d.license, contributors: d.contributors, metadata_url: datasetFileUrl(d.id, "metadata.json") })), columns, "ofo-collection.csv");
   };
 
   return (
