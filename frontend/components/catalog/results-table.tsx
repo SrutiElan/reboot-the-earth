@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useCatalog } from "./catalog-provider";
 import { KindBadge, WithheldBadge } from "./kind-mark";
 
-type SortKey = "name" | "kind" | "date" | "area" | "alt" | "overlaps";
+type SortKey = "name" | "kind" | "date" | "area" | "alt" | "overlaps" | "license";
 
 const num = (d: Dataset, key: SortKey): number | string => {
   switch (key) {
@@ -26,6 +26,8 @@ const num = (d: Dataset, key: SortKey): number | string => {
       return d.kind === "drone" ? (d.altitudeM ?? -1) : -1;
     case "overlaps":
       return d.overlaps.length;
+    case "license":
+      return d.license ?? "";
   }
 };
 
@@ -37,11 +39,14 @@ const COLUMNS: { key?: SortKey; label: string; align?: "right" }[] = [
   { key: "alt", label: "Altitude", align: "right" },
   { label: "Camera" },
   { label: "Aircraft" },
+  { key: "license", label: "License" },
   { key: "overlaps", label: "Overlaps" },
 ];
 
-export function ResultsTable() {
-  const { visible, mapReady, results, hoverId, setHoverId, collection, toggleCollection, clearAll } = useCatalog();
+export function ResultsTable({ showAll = false }: { showAll?: boolean }) {
+  const { visible: inMapArea, mapReady: boundsKnown, results, hoverId, setHoverId, collection, toggleCollection, setInCollection, clearAll } = useCatalog();
+  const visible = showAll ? results : inMapArea;
+  const mapReady = showAll || boundsKnown;
   const router = useRouter();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "date", dir: -1 });
 
@@ -56,26 +61,26 @@ export function ResultsTable() {
     return out;
   }, [visible, sort, mapReady]);
 
+  const picked = rows.filter((d) => collection.includes(d.id)).length;
+  const allPicked = rows.length > 0 && picked === rows.length;
+
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" || key === "kind" ? 1 : -1 }));
 
-  const hidden = results.length - visible.length;
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-baseline gap-3 border-b px-5 py-2.5 text-[13px] text-muted-foreground">
-        <span>
-          <span className="font-medium text-foreground tabular-nums">{visible.length.toLocaleString()}</span>{" "}
-          {visible.length === 1 ? "dataset" : "datasets"} in map area
-        </span>
-        {hidden > 0 && <span>{hidden.toLocaleString()} more outside it</span>}
-      </div>
       <div className="flex-1 overflow-auto">
-        <table className="w-full min-w-[920px] border-collapse text-[13px] tabular-nums">
+        <table className="w-full min-w-[1040px] border-collapse text-[13px] tabular-nums">
           <thead className="sticky top-0 z-[1] bg-background text-left text-muted-foreground">
             <tr>
               <th className="w-11 border-b py-2 pl-5">
-                <span className="sr-only">In collection</span>
+                <Checkbox
+                  checked={allPicked ? true : picked > 0 ? "indeterminate" : false}
+                  disabled={rows.length === 0}
+                  onCheckedChange={() => setInCollection(rows.map((d) => d.id), !allPicked)}
+                  aria-label={allPicked ? "Remove all listed datasets from collection" : "Add all listed datasets to collection"}
+                  className="data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground"
+                />
               </th>
               {COLUMNS.map((c, i) => {
                 const active = c.key && sort.key === c.key;
@@ -148,7 +153,7 @@ export function ResultsTable() {
                       >
                         {d.name}
                       </a>
-                      {d.kind === "drone" && d.withheld && <WithheldBadge />}
+                      {d.withheld && <WithheldBadge />}
                     </div>
                     <div className="mt-0.5 flex gap-2.5 text-xs text-muted-foreground">
                       <span>{d.id}</span>
@@ -165,6 +170,7 @@ export function ResultsTable() {
                   </td>
                   <td className={cell}>{cameraLabel(d)}</td>
                   <td className={cell}>{d.kind === "drone" ? d.aircraft : "—"}</td>
+                  <td className={cell}>{d.license ?? "—"}</td>
                   <td className={cn(cell, "pr-5")}>{overlapLabel(d)}</td>
                 </tr>
               );

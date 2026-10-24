@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SparklesIcon } from "lucide-react";
 import { useCatalog } from "@/components/catalog/catalog-provider";
 import { ASSISTANT_NAME } from "@/lib/catalog/assistant";
 import { Button } from "@/components/ui/button";
@@ -36,8 +37,11 @@ export default function DataLanding() {
             <Button asChild className="h-11 px-[22px] text-[15px] hover:bg-primary-hover">
               <Link href="/data/catalog">View data</Link>
             </Button>
-            <Button asChild variant="outline" className="h-11 px-[22px] text-[15px]">
-              <Link href="/data/assistant">Ask {ASSISTANT_NAME}</Link>
+            <Button asChild variant="outline" className="h-11 gap-2 px-[22px] text-[15px]">
+              <Link href="/data/catalog?ai=1">
+                <SparklesIcon className="size-4 text-primary dark:text-drone-ink" />
+                Ask {ASSISTANT_NAME}
+              </Link>
             </Button>
             <Button asChild variant="outline" className="h-11 px-[22px] text-[15px]">
               <Link href="/data/sql">SQL console</Link>

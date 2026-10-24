@@ -18,12 +18,13 @@ export function CollectionSheet() {
   const python = `import requests\n\nurls = ${JSON.stringify(items.map((d) => datasetFileUrl(d.id, "metadata.json")), null, 2)}\nitems = [requests.get(url).json() for url in urls]`;
 
   const downloadManifest = () => {
-    downloadRows(items.map((d) => ({ id: d.id, name: d.name, type: d.kind, project: d.site, date: d.date, metadata_url: datasetFileUrl(d.id, "metadata.json") })), ["id", "name", "type", "project", "date", "metadata_url"], "ofo-collection.csv");
+    const columns = ["id", "name", "type", "project", "date", "license", "contributors", "metadata_url"];
+    downloadRows(items.map((d) => ({ id: d.id, name: d.name, type: d.kind, project: d.site, date: d.date, license: d.license, contributors: d.contributors, metadata_url: datasetFileUrl(d.id, "metadata.json") })), columns, "ofo-collection.csv");
   };
 
   return (
     <Sheet open={sheet === "collection"} onOpenChange={(o) => setSheet(o ? "collection" : null)}>
-      <SheetContent className="w-full gap-0 sm:max-w-[420px]">
+      <SheetContent belowNav className="w-full gap-0 sm:max-w-[420px]">
         <SheetHeader className="border-b px-6 pt-5 pb-4">
           <SheetTitle className="text-lg font-semibold">Collection</SheetTitle>
           <SheetDescription>{plural(items.length, "dataset")}</SheetDescription>
@@ -59,6 +60,9 @@ export function CollectionSheet() {
           )}
         </div>
         <SheetFooter className="grid grid-cols-2 gap-2 border-t px-6 py-4">
+          <Button asChild={items.length > 1} variant="outline" className="col-span-2 h-10" disabled={items.length < 2}>
+            {items.length > 1 ? <Link href="/data/compare" onClick={() => setSheet(null)}>Compare {items.length} records</Link> : <span>Compare (add at least 2)</span>}
+          </Button>
           <Button variant="outline" className="h-10" disabled={!items.length} onClick={() => copy(python, "py")}>
             {copied === "py" ? "Copied" : "Copy Python"}
           </Button>
