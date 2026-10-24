@@ -82,7 +82,7 @@ class QueryPipelineTests(unittest.TestCase):
         class Reviewer:
             async def ainvoke(inner, inputs):
                 self.assertGreater(json.loads(inputs["result"])["rows"][0]["tree_count"], 0)
-                return assistant.Review(decision="usable", feedback="", answer="Verified count", follow=[])
+                return assistant.Review(decision="usable", feedback="", answer="Verified count", follow=[], actions=[])
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}), patch.object(assistant, "build_chains", return_value=(Planner(), Reviewer())):
             events = self.stream_events("How many trees?")
         final = events[-1]["answer"]
@@ -96,7 +96,7 @@ class QueryPipelineTests(unittest.TestCase):
                 return assistant.QueryPlan(response_language="English", sql="SELECT plot_id FROM ofo_trees WHERE height < 0", explanation="Query")
         class Reviewer:
             async def ainvoke(inner, inputs):
-                return assistant.Review(decision="empty", feedback="No matching records", answer="No matching records", follow=[])
+                return assistant.Review(decision="empty", feedback="No matching records", answer="No matching records", follow=[], actions=[])
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}), patch.object(assistant, "build_chains", return_value=(Planner(), Reviewer())):
             events = self.stream_events("Trees with negative measured heights")
         self.assertEqual(events[-1]["answer"]["status"], "empty")
@@ -131,6 +131,41 @@ class QueryPipelineTests(unittest.TestCase):
         self.assertEqual(final["status"], "usable")
         self.assertGreaterEqual(len(final["attempts"]), 2)
         self.assertIn("error", final["attempts"][0])
+
+
+class ActionTests(unittest.TestCase):
+    """Model-proposed actions are validated; ids come from the real query result."""
+
+    @staticmethod
+    def action(kind, dataset_id=None, filters=None):
+        return assistant.Action(type=kind, dataset_id=dataset_id, filters=filters)
+
+    @staticmethod
+    def patch(**values):
+        return assistant.FilterPatch(**{name: values.get(name) for name in assistant.FilterPatch.model_fields})
+
+    def test_add_to_collection_uses_result_ids_only(self):
+        actions, filters = assistant.resolve_actions([self.action("add_to_collection")], ["ground-0001", "ground-0002"])
+        self.assertEqual(actions, [{"type": "add_to_collection", "ids": ["ground-0001", "ground-0002"]}])
+        self.assertEqual(filters, {})
+
+    def test_add_to_collection_without_results_is_dropped(self):
+        self.assertEqual(assistant.resolve_actions([self.action("add_to_collection")], [])[0], [])
+
+    def test_set_filters_keeps_only_requested_filters(self):
+        actions, filters = assistant.resolve_actions([self.action("set_filters", filters=self.patch(snags=True, minDbh="5"))], [])
+        self.assertEqual(filters, {"snags": True, "minDbh": "5"})
+        self.assertEqual(actions[0]["filters"], filters)
+
+    def test_empty_filter_patch_is_dropped(self):
+        self.assertEqual(assistant.resolve_actions([self.action("set_filters", filters=self.patch())], []), ([], {}))
+
+    def test_open_dataset_must_exist(self):
+        self.assertEqual(assistant.resolve_actions([self.action("open_dataset", "ground-does-not-exist")], [])[0], [])
+
+    def test_at_most_three_actions(self):
+        many = [self.action("add_to_collection")] * 5
+        self.assertEqual(len(assistant.resolve_actions(many, ["ground-0001"])[0]), 3)
 
 
 if __name__ == "__main__":
