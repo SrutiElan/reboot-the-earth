@@ -33,13 +33,13 @@ export default function DatasetMap({ dataset, overlays, nearby = [] }: { dataset
     const c = mapColors(dark);
     const m = L.map(el.current, { zoomControl: false, scrollWheelZoom: false });
     L.control.zoom({ position: "bottomright" }).addTo(m);
-    const items = [dataset, ...dataset.overlaps.map((id) => catalog.byId(id)).filter((d): d is Dataset => !!d)].filter(hasLocation);
+    const items = [dataset, ...dataset.overlaps.map((id) => catalog.byId(id)).filter((d): d is Dataset => !!d), ...nearby].filter(hasLocation);
     // Initialize the view before adding polygon renderers (Leaflet needs bounds).
     const bounds = datasetBounds(items);
     if (items.length === 1 && dataset.kind === "ground") m.setView([dataset.lat, dataset.lng], 15);
     else if (bounds.isValid()) m.fitBounds(bounds.pad(0.25), { maxZoom: 16 });
     else m.setView([dataset.lat, dataset.lng], 15);
-    // Nearby records go underneath as dashed outlines; they stay out of the fitted view.
+    // Nearby records (shown while the Nearby tab is open) go underneath as dashed outlines.
     for (const d of nearby.filter(hasLocation)) {
       nearbyShape(d, c).bindTooltip(d.name, { sticky: d.kind === "drone" }).on("click", () => router.push(`/data/datasets/${d.id}`)).addTo(m);
     }
@@ -90,7 +90,7 @@ export default function DatasetMap({ dataset, overlays, nearby = [] }: { dataset
       layers.push(layer);
     }
     return () => layers.forEach((l) => l.remove());
-  }, [catalog, dataset, dark, router, basemap, rasters, trees]);
+  }, [catalog, dataset, nearby, dark, router, basemap, rasters, trees]);
 
   return <div ref={el} className="absolute inset-0" />;
 }

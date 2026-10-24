@@ -353,14 +353,14 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     cancelQuery: () => { controller.current?.abort(); },
     filters,
     patchFilters: (patch) => setFilters((f) => ({ ...f, ...patch })),
-    clearFilters: () => setFilters(EMPTY_FILTERS),
+    clearFilters: () => { setFilters(EMPTY_FILTERS); setAppliedIdx(-1); },
     kinds,
     setKinds,
     toggleKind: (k) => setKinds((all) => (all.includes(k) ? (all.length > 1 ? all.filter((x) => x !== k) : all) : [...all, k])),
     query,
     setQuery,
     pick,
-    clearPick: () => setPick(null),
+    clearPick: () => { setPick(null); setAppliedIdx(-1); },
     clearAll: () => {
       setFilters(EMPTY_FILTERS);
       setPick(null);

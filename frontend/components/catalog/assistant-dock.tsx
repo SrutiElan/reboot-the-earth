@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useCatalog } from "./catalog-provider";
-import { ChatInput, ChatThread } from "./chat-thread";
+import { ChatInput, ChatThread, FollowUps } from "./chat-thread";
 
 const PLOT_STARTERS = [
   "Is this plot a good ground-truth match for its drone flights?",
@@ -108,6 +108,7 @@ export function AssistantDock() {
         <ChatThread />
       </div>
       <div className="shrink-0 border-t px-4 pt-3 pb-4">
+        <FollowUps />
         <ChatInput placeholder="Describe what you need" />
       </div>
     </aside>

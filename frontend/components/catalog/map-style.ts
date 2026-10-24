@@ -55,10 +55,10 @@ export function datasetShape(d: Dataset, c: MapColors, strong = false): DatasetL
 /** Dashed, unfilled outline for records near the open one: context, not part of it. */
 export function nearbyShape(d: Dataset, c: MapColors): DatasetLayer {
   if (d.kind === "drone" && d.geometry) {
-    return L.geoJSON(d.geometry, { style: { color: c.drone, weight: 1.2, dashArray: "5 4", fillOpacity: 0 } });
+    return L.geoJSON(d.geometry, { style: { color: c.drone, weight: 2, dashArray: "6 4", fillOpacity: 0.04 } });
   }
   if (!hasLocation(d)) throw new Error("Dataset has no mapped location");
-  return L.circleMarker([d.lat, d.lng], { radius: 5, color: c.ground, weight: 1.5, dashArray: "3 3", fillOpacity: 0 });
+  return L.circleMarker([d.lat, d.lng], { radius: 7, color: c.ground, weight: 2, dashArray: "3 3", fillOpacity: 0 });
 }
 
 export function setEmphasis(layer: DatasetLayer, d: Dataset, c: MapColors, on: boolean) {

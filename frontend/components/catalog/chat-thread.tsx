@@ -21,9 +21,8 @@ function previewMeta(d: Dataset) {
 
 // The conversation shown in the assistant panel.
 export function ChatThread() {
-  const { catalog, messages, busy, progress, cancelQuery, appliedIdx, applyAnswer, ask, setHoverId, undoAdd, confirmAnswer, dismissAnswer } = useCatalog();
+  const { catalog, messages, busy, progress, cancelQuery, filters, appliedIdx, applyAnswer, setHoverId, undoAdd, confirmAnswer, dismissAnswer } = useCatalog();
   const end = useRef<HTMLDivElement>(null);
-  const lastAi = messages.findLastIndex((m) => m.role === "ai");
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
@@ -104,6 +103,11 @@ export function ChatThread() {
                       {x.type === "set_filters" && `Applied ${plural(filterChips({ ...EMPTY_FILTERS, ...x.filters }).length, "filter")}`}
                       {x.type === "open_dataset" && `Opened ${x.dataset_id}`}
                     </span>
+                    {x.type === "set_filters" && JSON.stringify({ ...EMPTY_FILTERS, ...x.filters }) !== JSON.stringify(filters) && (
+                      <button type="button" onClick={() => applyAnswer(a.apply ?? { filters: x.filters }, i)} className="font-medium text-primary underline-offset-2 hover:underline dark:text-drone-ink">
+                        Reapply
+                      </button>
+                    )}
                     {x.type === "add_to_collection" && !a.undone && !!a.added?.length && (
                       <button type="button" onClick={() => undoAdd(i)} className="font-medium text-primary underline-offset-2 hover:underline dark:text-drone-ink">
                         Undo
@@ -149,20 +153,6 @@ export function ChatThread() {
                 )}
               </div>
             )}
-            {i === lastAi && !a.pending && a.follow.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {a.follow.map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => ask(f)}
-                    className="min-h-7 rounded-full border bg-background px-3 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         );
       })}
@@ -206,5 +196,26 @@ export function ChatInput({ placeholder }: { placeholder: string }) {
         <ArrowUpIcon className="size-4" />
       </button>
     </form>
+  );
+}
+
+/** Suggested next questions for the latest answer. They sit above the input and vanish once anything else is sent. */
+export function FollowUps() {
+  const { messages, busy, ask } = useCatalog();
+  const last = messages[messages.length - 1];
+  if (busy || last?.role !== "ai" || last.answer.pending || last.answer.dismissed || last.answer.follow.length === 0) return null;
+  return (
+    <div className="mb-2.5 flex flex-wrap gap-1.5" aria-label="Suggested follow-up questions">
+      {last.answer.follow.map((f) => (
+        <button
+          key={f}
+          type="button"
+          onClick={() => ask(f)}
+          className="min-h-7 rounded-full border bg-background px-3 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          {f}
+        </button>
+      ))}
+    </div>
   );
 }

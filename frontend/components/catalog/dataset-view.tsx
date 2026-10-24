@@ -334,8 +334,8 @@ export function DatasetView({ id }: { id: string }) {
             </div>
           </header>
 
-          <DatasetMapPanel dataset={d} nearby={nearbyRecords} />
-          {nearbyRecords.length > 0 && <p className="-mt-3 text-xs text-muted-foreground">Dashed outlines on the map are nearby records within {NEARBY_KM} km; click one to open it.</p>}
+          <DatasetMapPanel dataset={d} nearby={active === "nearby" ? nearbyRecords : undefined} />
+          {active === "nearby" && <p className="-mt-3 text-xs text-muted-foreground">The dashed outlines on the map are the nearby records listed below; click one to open it.</p>}
 
           <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-4">
             {stats.map((x) => (
