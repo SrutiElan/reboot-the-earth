@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
-import { ChevronDownIcon, LayersIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDownIcon, LayersIcon, MaximizeIcon, MinimizeIcon } from "lucide-react";
 import type { Geometry } from "geojson";
 import type { Dataset, DroneMission } from "@/lib/catalog";
 import { apiJson, datasetFileUrl } from "@/lib/api";
@@ -60,6 +60,8 @@ const STACK: RasterKey[] = ["ortho", "dsm", "chm"];
 export function DatasetMapPanel({ dataset }: { dataset: Dataset }) {
   const { catalog } = useCatalog();
   const [open, setOpen] = useState(true);
+  const frame = useRef<HTMLDivElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const [basemap, setBasemap] = useState<Basemap>("topo");
   const [on, setOn] = useState<Record<RasterKey, boolean>>({ ortho: false, chm: false, dsm: false });
   const [opacity, setOpacity] = useState<Record<RasterKey, number>>({ ortho: 1, chm: 0.8, dsm: 0.7 });
@@ -95,6 +97,20 @@ export function DatasetMapPanel({ dataset }: { dataset: Dataset }) {
   });
   const style = useMemo(() => (trees.data ? treeStyle(trees.data.map((f) => f.properties), colorBy) : null), [trees.data, colorBy]);
 
+  useEffect(() => {
+    const sync = () => {
+      setFullscreen(document.fullscreenElement === frame.current);
+      // Leaflet only re-measures on window resize; nudge it after the container changes size.
+      window.dispatchEvent(new Event("resize"));
+    };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void frame.current?.requestFullscreen?.();
+  };
+
   const bounds = mission ? boundsOf(mission) : null;
   const rasters = STACK.flatMap((key) => {
     const spec = RASTERS.find((r) => r.key === key)!;
@@ -122,20 +138,32 @@ export function DatasetMapPanel({ dataset }: { dataset: Dataset }) {
   };
 
   return (
-    <div className="relative isolate h-[30rem] overflow-hidden rounded-xl border bg-surface">
+    <div ref={frame} className={cn("relative isolate overflow-hidden rounded-xl border bg-surface", fullscreen ? "h-screen rounded-none" : "h-[30rem]")}>
       <DatasetMap dataset={dataset} overlays={overlays} />
 
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        aria-label={fullscreen ? "Exit full screen" : "Full screen"}
+        title={fullscreen ? "Exit full screen" : "Full screen"}
+        className="absolute bottom-3 left-3 z-[1000] flex size-9 items-center justify-center rounded-lg border bg-popover shadow-[0_2px_8px_rgba(0,0,0,0.12)] hover:bg-muted/60"
+      >
+        {fullscreen ? <MinimizeIcon className="size-4" aria-hidden /> : <MaximizeIcon className="size-4" aria-hidden />}
+      </button>
+
       {/* One box: the header row collapses the body, so the layers and their toggle are the same object. */}
-      <div className="absolute top-3 right-3 z-[1000] flex max-h-[calc(100%-1.5rem)] w-[248px] flex-col overflow-hidden rounded-lg border bg-popover text-xs shadow-[0_2px_8px_rgba(0,0,0,0.12)]">
+      <div className={cn("absolute top-3 right-3 z-[1000] flex max-h-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-lg border bg-popover text-xs shadow-[0_2px_8px_rgba(0,0,0,0.12)]", open ? "w-[248px]" : "w-9")}>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="flex h-9 shrink-0 items-center gap-2 px-3 text-left text-[13px] font-semibold hover:bg-muted/60"
+          aria-label="Map layers"
+          title="Map layers"
+          className={cn("flex h-9 shrink-0 items-center hover:bg-muted/60", open ? "gap-2 px-3" : "justify-center")}
         >
-          <LayersIcon className="size-3.5" aria-hidden />
-          <span className="flex-1">Map layers</span>
-          <ChevronDownIcon className={cn("size-4 text-muted-foreground transition-transform", !open && "-rotate-90")} aria-hidden />
+          <LayersIcon className="size-4" aria-hidden />
+          {open && <span className="flex-1" />}
+          {open && <ChevronDownIcon className="size-4 text-muted-foreground" aria-hidden />}
         </button>
 
         {open && (
