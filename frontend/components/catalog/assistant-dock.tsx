@@ -8,6 +8,17 @@ import { cn } from "@/lib/utils";
 import { useCatalog } from "./catalog-provider";
 import { ChatInput, ChatThread } from "./chat-thread";
 
+const PLOT_STARTERS = [
+  "Is this plot a good ground-truth match for its drone flights?",
+  "Which nearby plots measured trees down to a similar size?",
+  "Summarize the species and tree sizes on this plot",
+];
+const MISSION_STARTERS = [
+  "Which ground plots could validate this flight?",
+  "How does this flight differ from other flights at the same site?",
+  "Which plots were surveyed within a year of this flight?",
+];
+
 function ago(t: number) {
   const m = Math.round((Date.now() - t) / 60000);
   if (m < 1) return "just now";
@@ -55,7 +66,8 @@ function HistoryMenu() {
 }
 
 export function AssistantDock() {
-  const { setDockOpen, newChat, messages, ask, busy } = useCatalog();
+  const { setDockOpen, newChat, messages, ask, busy, focus } = useCatalog();
+  const starters = focus ? (focus.id.startsWith("ground-") ? PLOT_STARTERS : MISSION_STARTERS) : STARTERS;
 
   return (
     <aside
@@ -76,9 +88,11 @@ export function AssistantDock() {
         {messages.length === 0 && (
           <div className="flex flex-col gap-2.5">
             <p className="mb-1 text-[13px] leading-[1.6] text-muted-foreground">
-              Ask about missions, plots or trees, or tell me to act: filter the catalog, add records to your collection, or open a plot&apos;s timeline.
+              {focus
+                ? `I can see the record you're viewing (${focus.id}), including its trust checks and what overlaps it.`
+                : "Ask about missions, plots or trees, or tell me to act: filter the catalog, add records to your collection, or open a plot's timeline."}
             </p>
-            {STARTERS.map((s) => (
+            {starters.map((s) => (
               <button
                 key={s}
                 type="button"

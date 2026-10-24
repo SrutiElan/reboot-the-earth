@@ -1,6 +1,9 @@
 import type { Filters } from "./filters";
 
 export const ASSISTANT_NAME = "AI";
+
+/** Pages that show the assistant panel beside their content. */
+export const hasAssistantPanel = (pathname: string) => pathname === "/data/catalog" || pathname.startsWith("/data/datasets/");
 export interface Apply {
   filters?: Partial<Filters>;
   ids?: string[];

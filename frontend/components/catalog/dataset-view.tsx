@@ -1,20 +1,24 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CheckIcon, ChevronRightIcon, DownloadIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import type { Dataset, DroneMission, GroundPlot } from "@/lib/catalog";
 import { API_BASE, apiJson, datasetFileUrl } from "@/lib/api";
+import { focusSummary } from "@/lib/catalog/trust";
+import { companionFlights } from "@/lib/catalog/site";
 import { areaLabel, datasetFiles, distanceKm, formatDate, licenseTerms, licenseUrl, plural, protocolLabel } from "@/lib/catalog/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useCatalog } from "./catalog-provider";
+import { AssistantDock } from "./assistant-dock";
+import { DatasetMapPanel } from "./dataset-map-panel";
+import { ComparePanel, SitePanel, TrustBadge, TrustPanel } from "./dataset-insights";
+import { Panel } from "./panel";
 import { KindBadge, KindMark } from "./kind-mark";
 import { CatalogSwitcher } from "./catalog-switcher";
 import { useCopy } from "./use-copy";
 
-const DatasetMap = dynamic(() => import("./dataset-map"), { ssr: false });
 
 function details(d: Dataset): { k: string; v: string }[] {
   if (d.kind === "drone") {
@@ -36,18 +40,6 @@ function pythonFor(d: Dataset) {
     : `import pandas as pd\nimport geopandas as gpd\n\ntrees = pd.read_csv(\n    "${datasetFileUrl(d.id, "trees.csv")}"
 )\nstems = gpd.read_file(\n    "${datasetFileUrl(d.id, "trees.geojson")}"
 )`;
-}
-
-function Panel({ title, action, children, className }: { title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
-  return (
-    <section className={cn("overflow-hidden rounded-xl border bg-card", className)}>
-      <div className="flex min-h-[52px] items-center gap-3 border-b px-5 py-2.5">
-        <h2 className="flex-1 text-[15px] font-semibold">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
 }
 
 const NEARBY_KM = 5;
@@ -248,7 +240,7 @@ function RecordLink({ r, note }: { r: Dataset; note?: string }) {
 }
 
 export function DatasetView({ id }: { id: string }) {
-  const { catalog, catalogLoading, catalogError, reloadCatalog, collection, toggleCollection } = useCatalog();
+  const { catalog, catalogLoading, catalogError, reloadCatalog, collection, toggleCollection, setFocus, dockOpen } = useCatalog();
   const d = catalog.byId(id);
   const [tab, setTab] = useState<"python" | "json">("python");
   const [copied, copy] = useCopy();
@@ -264,6 +256,13 @@ export function DatasetView({ id }: { id: string }) {
       .slice(0, 8);
   }, [catalog, d]);
 
+  // Tell the assistant which record is open so "this plot" questions work.
+  useEffect(() => {
+    if (!d) return;
+    setFocus({ id: d.id, text: focusSummary(d, catalog) });
+    return () => setFocus(null);
+  }, [d, catalog, setFocus]);
+
   if (catalogLoading) return <p className="p-8 text-muted-foreground">Loading dataset…</p>;
   if (catalogError) return <p role="alert" className="p-8">{catalogError} <button type="button" onClick={reloadCatalog} className="underline">Retry</button></p>;
   if (!d) return <p className="p-8">Dataset not found. <Link href="/data/catalog" className="underline">Return to catalog</Link></p>;
@@ -273,7 +272,8 @@ export function DatasetView({ id }: { id: string }) {
   const code = tab === "python" ? pythonFor(d) : datasetFileUrl(d.id, "metadata.json");
   const kmLabel = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m away` : `${km.toFixed(1)} km away`);
   // Many sites have a high straight-down flight and a low angled one a few metres apart.
-  const companion = (x: Dataset) => d.kind === "drone" && x.kind === "drone" && x.oblique !== d.oblique;
+  const companions = new Set(companionFlights(d, catalog).map((m) => m.id));
+  const companion = (x: Dataset) => companions.has(x.id);
   const stats =
     d.kind === "drone"
       ? [
@@ -290,7 +290,8 @@ export function DatasetView({ id }: { id: string }) {
         ];
 
   return (
-    <div className="flex-1">
+    <div className="flex flex-1 items-start">
+     <div className="min-w-0 flex-1">
       <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-3 px-5 pt-4">
         <nav aria-label="Breadcrumb" className="flex flex-1 flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
           <Link href="/data" className="text-foreground hover:underline">
@@ -311,7 +312,10 @@ export function DatasetView({ id }: { id: string }) {
       <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-5 pt-6 pb-20">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-2.5">
-            <KindBadge kind={d.kind} long />
+            <div className="flex flex-wrap items-center gap-2">
+              <KindBadge kind={d.kind} long />
+              <TrustBadge d={d} />
+            </div>
             <h1 className="text-[clamp(22px,3vw,28px)] leading-tight font-semibold tracking-[-0.02em] [overflow-wrap:anywhere]">
               {d.name}
             </h1>
@@ -343,9 +347,10 @@ export function DatasetView({ id }: { id: string }) {
 
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div className="flex min-w-0 flex-col gap-5">
-            <div className="relative isolate h-[26rem] overflow-hidden rounded-xl border bg-surface">
-              <DatasetMap dataset={d} />
-            </div>
+            <DatasetMapPanel dataset={d} />
+
+            <ComparePanel d={d} />
+            <SitePanel d={d} />
 
             {d.kind === "ground" && <TimelinePanel plot={d} flights={related.filter((r): r is DroneMission => r.kind === "drone")} />}
 
@@ -368,7 +373,7 @@ export function DatasetView({ id }: { id: string }) {
               ) : (
                 <ul>
                   {nearby.map(({ x, km }) => (
-                    <RecordLink key={x.id} r={x} note={[kmLabel(km), companion(x) && km < 0.2 ? "Companion flight" : ""].filter(Boolean).join(" · ")} />
+                    <RecordLink key={x.id} r={x} note={[kmLabel(km), companion(x) ? "Companion flight" : ""].filter(Boolean).join(" · ")} />
                   ))}
                 </ul>
               )}
@@ -376,6 +381,7 @@ export function DatasetView({ id }: { id: string }) {
           </div>
 
           <div className="flex min-w-0 flex-col gap-5">
+            <TrustPanel d={d} />
             <Restrictions d={d} />
 
             <Panel title="Details">
@@ -449,6 +455,12 @@ export function DatasetView({ id }: { id: string }) {
           </div>
         </div>
       </div>
+     </div>
+     {dockOpen && (
+       <div className="max-md:fixed max-md:inset-x-0 max-md:top-[var(--nav-h)] max-md:bottom-0 max-md:z-[1080] md:sticky md:top-0 md:h-[calc(100dvh-var(--nav-h))] md:w-[380px] md:shrink-0">
+         <AssistantDock />
+       </div>
+     )}
     </div>
   );
 }

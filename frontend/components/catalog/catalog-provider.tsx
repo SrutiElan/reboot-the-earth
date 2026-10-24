@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { buildCatalog, type Catalog, type Bounds, type Dataset } from "@/lib/catalog";
 import { API_BASE, apiJson } from "@/lib/api";
 import { EMPTY_FILTERS, filterDatasets, inBounds, type Filters, type KindFilter } from "@/lib/catalog/filters";
-import type { Answer, Apply } from "@/lib/catalog/assistant";
+import { hasAssistantPanel, type Answer, type Apply } from "@/lib/catalog/assistant";
 
 export type ChatMessage = { role: "user"; text: string } | { role: "ai"; answer: Answer };
 
@@ -72,6 +72,9 @@ interface CatalogContext {
   /** Bumped whenever the map should zoom to fit the results */
   fitToken: number;
   requestFit: () => void;
+  /** Move the map to a box (a searched place) without filtering the catalog. */
+  flyTarget: { bounds: Bounds; token: number } | null;
+  flyTo: (bounds: Bounds) => void;
 
   hoverId: string | null;
   setHoverId: (id: string | null) => void;
@@ -85,6 +88,9 @@ interface CatalogContext {
   busy: boolean;
   dockOpen: boolean;
   setDockOpen: (open: boolean) => void;
+  /** The record whose page is open, so the assistant can answer "this plot" questions. */
+  focus: { id: string; text: string } | null;
+  setFocus: (focus: { id: string; text: string } | null) => void;
   appliedIdx: number;
   ask: (question: string) => void;
   applyAnswer: (apply: Apply, idx: number) => void;
@@ -131,12 +137,14 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   const [pick, setPick] = useState<CatalogContext["pick"]>(null);
   const [bounds, setBounds] = useState<Bounds | null>(null);
   const [fitToken, setFitToken] = useState(0);
+  const [flyTarget, setFlyTarget] = useState<{ bounds: Bounds; token: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [collection, setCollection] = useState<string[]>([]);
   const [sheet, setSheet] = useState<CatalogContext["sheet"]>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [dockOpen, setDockOpen] = useState(false);
+  const [focus, setFocus] = useState<{ id: string; text: string } | null>(null);
   const [appliedIdx, setAppliedIdx] = useState(-1);
   const mapView = useRef<MapView | null>(null);
   const pathnameRef = useRef(pathname);
@@ -212,6 +220,8 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   );
 
   /** Perform an answer's actions and mark which records it added to the collection. */
+  const onCatalogPage = () => pathnameRef.current === "/data/catalog";
+
   const runAnswer = useCallback(
     (a: Answer, idx: number): Answer => {
       const adds = a.actions.flatMap((x) => (x.type === "add_to_collection" ? x.ids : []));
@@ -227,6 +237,8 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       if (open) {
         setDockOpen(true);
         router.push(`/data/datasets/${open.dataset_id}#timeline`);
+      } else if (!onCatalogPage()) {
+        // On a record page the answer stays in the panel; "Show on the map" is the user's call.
       } else if (a.apply) applyAnswer(a.apply, idx);
       else {
         setPick(null);
@@ -264,14 +276,14 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       setProgress("Connecting to the assistant…");
       setDockOpen(true);
       setSheet(null);
-      if (pathname !== "/data/catalog") router.push("/data/catalog");
+      if (!hasAssistantPanel(pathname)) router.push("/data/catalog");
       try {
         const history = messages.slice(-20).map((m) => m.role === "user"
           ? { role: "user", content: m.text }
           : { role: "assistant", content: `${m.answer.text}\nSQL: ${m.answer.sql ?? ""}`.slice(0, 6000) });
         const response = await fetch(`${API_BASE}/api/assistant/query`, {
           method: "POST", headers: { "Content-Type": "application/json" }, signal: abort.signal,
-          body: JSON.stringify({ question: q, history, context_ids: convo.current }),
+          body: JSON.stringify({ question: q, history, context_ids: focus ? [focus.id, ...convo.current].slice(0, 50) : convo.current, focus: focus?.text ?? "" }),
         });
         if (!response.ok) {
           const body = await response.json().catch(() => null);
@@ -328,7 +340,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [messages, pathname, router, runAnswer],
+    [messages, pathname, router, runAnswer, focus],
   );
 
   const value: CatalogContext = {
@@ -361,6 +373,8 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     },
     fitToken,
     requestFit,
+    flyTarget,
+    flyTo: (bounds) => setFlyTarget((t) => ({ bounds, token: (t?.token ?? 0) + 1 })),
     hoverId,
     setHoverId,
     collection,
@@ -371,6 +385,8 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     busy,
     dockOpen,
     setDockOpen,
+    focus,
+    setFocus,
     appliedIdx,
     ask,
     applyAnswer,

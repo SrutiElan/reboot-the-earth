@@ -171,8 +171,10 @@ def export_files(dataset_id: str) -> dict[str, bytes]:
 
 
 OFO_BUCKET = "https://js2.jetstream-cloud.org:8001/swift/v1/ofo-public"
-IMAGERY_KINDS = {"ortho-dsm-ptcloud.tif": "Orthomosaic", "chm-ptcloud.tif": "Canopy height model",
-                 "dsm-ptcloud.tif": "Surface model", "points.copc.laz": "3D point cloud", "report.pdf": "Processing report"}
+# suffix -> (layer key the map uses, label). Only the three rasters can be drawn as map layers.
+IMAGERY_KINDS = {"ortho-dsm-ptcloud.tif": ("ortho", "Orthomosaic"), "chm-ptcloud.tif": ("chm", "Canopy height model"),
+                 "dsm-ptcloud.tif": ("dsm", "Surface elevation model"), "points.copc.laz": ("pointcloud", "3D point cloud"),
+                 "report.pdf": ("report", "Processing report")}
 
 
 @lru_cache(maxsize=512)
@@ -186,7 +188,8 @@ def mission_imagery(mission_id: str) -> dict:
         except Exception:
             return {"available": None, "folder": None, "products": []}  # bucket unreachable: don't cache as empty
         if objects:
-            products = [{"label": IMAGERY_KINDS[o["name"].rsplit("_", 1)[-1]], "url": f"{OFO_BUCKET}/{o['name']}", "bytes": o["bytes"]}
+            products = [{"key": IMAGERY_KINDS[o["name"].rsplit("_", 1)[-1]][0], "label": IMAGERY_KINDS[o["name"].rsplit("_", 1)[-1]][1],
+                         "url": f"{OFO_BUCKET}/{o['name']}", "bytes": o["bytes"]}
                         for o in objects if "/full/" in o["name"] and o["name"].rsplit("_", 1)[-1] in IMAGERY_KINDS]
             return {"available": True, "folder": f"{OFO_BUCKET}/?prefix={prefix}&delimiter=/", "products": products}
     return {"available": False, "folder": None, "products": []}
