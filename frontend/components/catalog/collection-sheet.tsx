@@ -60,6 +60,9 @@ export function CollectionSheet() {
           )}
         </div>
         <SheetFooter className="grid grid-cols-2 gap-2 border-t px-6 py-4">
+          <Button asChild={items.length > 1} variant="outline" className="col-span-2 h-10" disabled={items.length < 2}>
+            {items.length > 1 ? <Link href="/data/compare" onClick={() => setSheet(null)}>Compare {items.length} records</Link> : <span>Compare (add at least 2)</span>}
+          </Button>
           <Button variant="outline" className="h-10" disabled={!items.length} onClick={() => copy(python, "py")}>
             {copied === "py" ? "Copied" : "Copy Python"}
           </Button>

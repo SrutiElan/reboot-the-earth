@@ -38,6 +38,8 @@
   --color-ground: var(--ground);
   --color-ground-ink: var(--ground-ink);
   --color-ground-tint: var(--ground-tint);
+  --color-chart-drone: var(--chart-drone);
+  --color-chart-ground: var(--chart-ground);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -78,6 +80,10 @@
   --ground: #d9731a;
   --ground-ink: #a4530f;
   --ground-tint: #fbeee2;
+
+  /* Chart marks: same hues as the map, nudged to pass the palette checks (chroma, CVD separation) on each surface. */
+  --chart-drone: #00829f;
+  --chart-ground: #d9731a;
 }
 
 /* Dark values follow the OFO site's dark theme (#23252f body, #282a36 navbar). */
@@ -110,6 +116,9 @@
   --ground: #ee8f3e;
   --ground-ink: #f3a868;
   --ground-tint: rgb(238 143 62 / 0.16);
+
+  --chart-drone: #1c9fbf;
+  --chart-ground: #dd7225;
 }
 
 @media (max-width: 991.98px) {
