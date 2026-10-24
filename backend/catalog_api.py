@@ -3,8 +3,10 @@
 import csv
 import io
 import json
+import urllib.request
 import zipfile
 from contextlib import asynccontextmanager
+from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -20,7 +22,7 @@ except ImportError:
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
 CATALOG_VIEW = """
-CREATE OR REPLACE VIEW catalog_datasets AS
+CREATE VIEW catalog_datasets AS
 SELECT 'drone-' || m.mission_id AS dataset_id, m.mission_id AS source_id,
        'drone'::text AS kind,
        COALESCE(NULLIF(m.contributor_dataset_name, ''), m.mission_id) AS name,
@@ -39,6 +41,9 @@ SELECT 'drone-' || m.mission_id AS dataset_id, m.mission_id AS source_id,
        COALESCE(m.smart_oblique_derived, false) OR m.camera_pitch_derived >= 5 AS oblique,
        NULL::bigint AS tree_count, NULL::text AS species,
        false AS date_approximate,
+       replace(m.license, 'CC-BY', 'CC BY') AS license, m.contributor_names AS contributors,
+       NULL::double precision AS min_dbh, NULL::double precision AS min_ht,
+       NULL::boolean AS includes_snags, NULL::text AS hyperplot_id,
        m.geom
 FROM ofo_drone_missions m
 UNION ALL
@@ -55,7 +60,10 @@ SELECT 'ground-' || p.plot_id, p.plot_id, 'ground',
        NULL::double precision, NULL::double precision, NULL::bigint, NULL::text,
        COALESCE(p.withhold_from_training, false), false,
        (SELECT count(*) FROM ofo_trees t WHERE t.plot_id = p.plot_id),
-       p.top_species, COALESCE(p.survey_date_approx, true), p.geom
+       p.top_species, COALESCE(p.survey_date_approx, true),
+       COALESCE(p.license_short, p.license), p.investigator_names,
+       p.min_dbh, p.min_ht, p.includes_snags, p.hyperplot_id,
+       p.geom
 FROM ofo_plots p
 """
 
@@ -64,6 +72,7 @@ FROM ofo_plots p
 async def lifespan(app):
     with engine.begin() as conn:
         conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_ofo_trees_plot_id ON ofo_trees (plot_id)")
+        conn.exec_driver_sql("DROP VIEW IF EXISTS catalog_datasets")
         conn.exec_driver_sql(CATALOG_VIEW)
         conn.exec_driver_sql("""DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ofo_reader') THEN
@@ -81,13 +90,15 @@ def catalog_records() -> list[dict]:
             SELECT dataset_id, source_id, kind, name, project_name, date, year,
                    latitude, longitude, area_ha, altitude_m, camera_pitch, image_count,
                    aircraft, withheld, oblique, tree_count, species, date_approximate,
+                   license, contributors, min_dbh, min_ht, includes_snags, hyperplot_id,
                    ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.00001), 7)::json AS geometry
             FROM catalog_datasets ORDER BY date DESC NULLS LAST, dataset_id
         """)).mappings().all()
         pairs = conn.execute(text("""
             SELECT 'drone-' || m.mission_id AS mission, 'ground-' || p.plot_id AS plot
             FROM ofo_drone_missions m JOIN ofo_plots p
-              ON m.geom && p.geom AND ST_Intersects(m.geom, p.geom)
+              ON m.geom && ST_Expand(p.geom, 0.0002)  -- ~20 m prefilter; GPS offset can be up to ~10 m
+             AND ST_DWithin(m.geom::geography, p.geom::geography, 10)
         """)).all()
     overlaps: dict[str, list[str]] = {}
     for mission, plot in pairs:
@@ -100,14 +111,17 @@ def catalog_records() -> list[dict]:
             "name": row["name"], "site": row["project_name"], "date": row["date"] or "",
             "year": row["year"], "lat": row["latitude"], "lng": row["longitude"],
             "overlaps": overlaps.get(row["dataset_id"], []), "geometry": row["geometry"],
-            "dateApproximate": row["date_approximate"],
+            "dateApproximate": row["date_approximate"], "withheld": row["withheld"],
+            "license": row["license"], "contributors": row["contributors"],
         }
         if row["kind"] == "drone":
             base.update(areaHa=row["area_ha"], altitudeM=row["altitude_m"],
                         cameraPitch=row["camera_pitch"], imageCount=row["image_count"],
-                        aircraft=row["aircraft"], withheld=row["withheld"], oblique=row["oblique"])
+                        aircraft=row["aircraft"], oblique=row["oblique"])
         else:
-            base.update(trees=row["tree_count"], plotHa=row["area_ha"], species=row["species"])
+            base.update(trees=row["tree_count"], plotHa=row["area_ha"], species=row["species"],
+                        minDbh=row["min_dbh"], minHt=row["min_ht"],
+                        includesSnags=row["includes_snags"], hyperplot=row["hyperplot_id"])
         items.append(json_value(base))
     return items
 
@@ -139,6 +153,12 @@ def export_files(dataset_id: str) -> dict[str, bytes]:
     row, trees = dataset_rows(dataset_id)
     encode = lambda value: json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
     files = {"metadata.json": encode(row["metadata"]), "geometry.geojson": encode({"type": "Feature", "geometry": row["geometry"], "properties": row["metadata"]})}
+    meta = row["metadata"]
+    license_name = meta.get("license_short") or meta.get("license") or "not stated"
+    credit = meta.get("contributor_names") or meta.get("investigator_names") or "not stated"
+    files["ATTRIBUTION.txt"] = (f"Dataset: {dataset_id}\nSource: Open Forest Observatory (https://openforestobservatory.org)\n"
+                                f"License: {license_name}\nContributors: {credit}\n"
+                                "Please credit the contributors above and keep the license when sharing this data.\n").encode("utf-8")
     if dataset_id.startswith("ground-"):
         files["trees.geojson"] = encode({"type": "FeatureCollection", "features": [{"type": "Feature", **t} for t in trees]})
         output = io.StringIO(newline="")
@@ -150,12 +170,45 @@ def export_files(dataset_id: str) -> dict[str, bytes]:
     return files
 
 
+OFO_BUCKET = "https://js2.jetstream-cloud.org:8001/swift/v1/ofo-public"
+IMAGERY_KINDS = {"ortho-dsm-ptcloud.tif": "Orthomosaic", "chm-ptcloud.tif": "Canopy height model",
+                 "dsm-ptcloud.tif": "Surface model", "points.copc.laz": "3D point cloud", "report.pdf": "Processing report"}
+
+
+@lru_cache(maxsize=512)
+def mission_imagery(mission_id: str) -> dict:
+    """Locate a mission's public products in the OFO bucket (links only, nothing is downloaded)."""
+    for batch in ("missions_03", "missions_02", "missions_01"):
+        prefix = f"drone/{batch}/{mission_id}/"
+        try:
+            with urllib.request.urlopen(f"{OFO_BUCKET}/?prefix={prefix}&format=json", timeout=8) as r:
+                objects = json.load(r)
+        except Exception:
+            return {"available": None, "folder": None, "products": []}  # bucket unreachable: don't cache as empty
+        if objects:
+            products = [{"label": IMAGERY_KINDS[o["name"].rsplit("_", 1)[-1]], "url": f"{OFO_BUCKET}/{o['name']}", "bytes": o["bytes"]}
+                        for o in objects if "/full/" in o["name"] and o["name"].rsplit("_", 1)[-1] in IMAGERY_KINDS]
+            return {"available": True, "folder": f"{OFO_BUCKET}/?prefix={prefix}&delimiter=/", "products": products}
+    return {"available": False, "folder": None, "products": []}
+
+
+@router.get("/datasets/{dataset_id}/imagery")
+def dataset_imagery(dataset_id: str):
+    kind, _, source_id = dataset_id.partition("-")
+    if kind != "drone" or not source_id.isalnum():
+        raise HTTPException(404, "Imagery is only listed for drone missions")
+    result = mission_imagery(source_id)
+    if result["available"] is None:
+        mission_imagery.cache_clear()
+    return result
+
+
 @router.get("/datasets/{dataset_id}/files/{filename}")
 def download_file(dataset_id: str, filename: str):
     files = export_files(dataset_id)
     if filename not in files:
         raise HTTPException(404, "File not available for this dataset")
-    mime = "text/csv" if filename.endswith(".csv") else "application/geo+json" if filename.endswith(".geojson") else "application/json"
+    mime = "text/plain" if filename.endswith(".txt") else "text/csv" if filename.endswith(".csv") else "application/geo+json" if filename.endswith(".geojson") else "application/json"
     return Response(files[filename], media_type=mime, headers={"Content-Disposition": f'attachment; filename="{dataset_id}-{filename}"'})
 
 
