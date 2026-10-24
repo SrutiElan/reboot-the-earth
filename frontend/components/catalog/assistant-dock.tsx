@@ -86,28 +86,30 @@ export function AssistantDock() {
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-5">
         {messages.length === 0 && (
-          <div className="flex flex-col gap-2.5">
-            <p className="mb-1 text-[13px] leading-[1.6] text-muted-foreground">
-              {focus
-                ? `I can see the record you're viewing (${focus.id}), including its trust checks and what overlaps it.`
-                : "Ask about missions, plots or trees, or tell me to act: filter the catalog, add records to your collection, or open a plot's timeline."}
-            </p>
+          <p className="mb-1 text-[13px] leading-[1.6] text-muted-foreground">
+            {focus
+              ? `I can see the record you're viewing (${focus.id}), including its trust checks and what overlaps it.`
+              : "Ask about missions, plots or trees, or tell me to act: filter the catalog, add records to your collection, or open a plot's timeline."}
+          </p>
+        )}
+        <ChatThread />
+      </div>
+      <div className="shrink-0 border-t px-4 pt-3 pb-4">
+        {messages.length === 0 && (
+          <div className="mb-2.5 flex flex-col gap-1.5">
             {starters.map((s) => (
               <button
                 key={s}
                 type="button"
                 disabled={busy}
                 onClick={() => ask(s)}
-                className="rounded-lg border bg-background px-3 py-2.5 text-left text-[13px] leading-snug hover:bg-muted"
+                className="rounded-lg border bg-background px-3 py-2 text-left text-[13px] leading-snug hover:bg-muted"
               >
                 {s}
               </button>
             ))}
           </div>
         )}
-        <ChatThread />
-      </div>
-      <div className="shrink-0 border-t px-4 pt-3 pb-4">
         <FollowUps />
         <ChatInput placeholder="Describe what you need" />
       </div>

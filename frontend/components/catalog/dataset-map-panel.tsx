@@ -12,7 +12,7 @@ import {
   type RasterKey, type RasterSpec, type TreeColorBy,
 } from "@/lib/catalog/overlays";
 import { cn } from "@/lib/utils";
-import { BASEMAPS, type Basemap } from "./map-style";
+import { BASEMAPS, type Basemap } from "./basemaps";
 import { useCatalog } from "./catalog-provider";
 import type { MapOverlays, TreeFeature } from "./dataset-map";
 
