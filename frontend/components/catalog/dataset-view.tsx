@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CheckIcon, ChevronRightIcon, DownloadIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import type { Dataset, DroneMission, GroundPlot } from "@/lib/catalog";
 import { API_BASE, apiJson, datasetFileUrl } from "@/lib/api";
 import { focusSummary } from "@/lib/catalog/trust";
@@ -13,26 +13,11 @@ import { Button } from "@/components/ui/button";
 import { useCatalog } from "./catalog-provider";
 import { AssistantDock } from "./assistant-dock";
 import { DatasetMapPanel } from "./dataset-map-panel";
-import { ComparePanel, SitePanel, TrustBadge, TrustPanel } from "./dataset-insights";
+import { ComparePanel, SitePanel, TrustBadge, TrustChecklist, trustSummary } from "./dataset-insights";
 import { Panel } from "./panel";
 import { KindBadge, KindMark } from "./kind-mark";
 import { CatalogSwitcher } from "./catalog-switcher";
 import { useCopy } from "./use-copy";
-
-
-function details(d: Dataset): { k: string; v: string }[] {
-  if (d.kind === "drone") {
-    return [
-      { k: "Site", v: d.site },
-      { k: "Aircraft", v: d.aircraft ?? "—" },
-      { k: "Camera", v: d.cameraPitch === null ? "—" : `${d.cameraPitch}° (${d.oblique ? "oblique" : "nadir"})` },
-    ];
-  }
-  return [
-    { k: "Site", v: d.site },
-    { k: "Dominant species", v: d.species ?? "—" },
-  ];
-}
 
 function pythonFor(d: Dataset) {
   return d.kind === "drone"
@@ -44,13 +29,17 @@ function pythonFor(d: Dataset) {
 
 const NEARBY_KM = 5;
 
-function Restrictions({ d }: { d: Dataset }) {
+/** License, restrictions and credit, with the trust checklist folded away until asked for. */
+function UsePanel({ d, trustOpen, setTrustOpen }: { d: Dataset; trustOpen: boolean; setTrustOpen: (open: boolean) => void }) {
+  const { catalog } = useCatalog();
   const [copied, copy] = useCopy();
   const url = licenseUrl(d.license);
+  const trust = trustSummary(d, catalog);
   const credit = `${d.contributors ?? "Unknown contributors"}. ${d.name} (${d.id}), Open Forest Observatory. License: ${d.license ?? "not stated"}.`;
+  const notes = [licenseTerms(d.license), d.withheld ? "Reserved for testing machine-learning models; keep it out of training data." : null, d.kind === "ground" ? "Trees below the smallest measured size were not recorded, so counts are only complete above it." : null].filter(Boolean);
   return (
-    <Panel title="Data use and restrictions">
-      <dl className="grid gap-x-5 gap-y-3.5 p-5 [grid-template-columns:repeat(auto-fill,minmax(150px,1fr))]">
+    <Panel title="Data use and trust">
+      <dl className="grid gap-x-5 gap-y-3.5 p-5 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))]">
         <div>
           <dt className="text-xs text-muted-foreground">License</dt>
           <dd className="mt-0.5 text-sm font-medium">
@@ -67,25 +56,15 @@ function Restrictions({ d }: { d: Dataset }) {
           <dd className="mt-0.5 text-sm font-medium">{d.withheld ? "Withheld (test set)" : "Available"}</dd>
         </div>
         {d.kind === "ground" && (
-          <>
-            <div>
-              <dt className="text-xs text-muted-foreground">Smallest tree measured</dt>
-              <dd className="mt-0.5 text-sm font-medium">{protocolLabel(d)}</dd>
-            </div>
-            {d.hyperplot && (
-              <div>
-                <dt className="text-xs text-muted-foreground">Hyperplot</dt>
-                <dd className="mt-0.5 text-sm font-medium">{d.hyperplot}</dd>
-              </div>
-            )}
-          </>
+          <div>
+            <dt className="text-xs text-muted-foreground">Smallest tree measured</dt>
+            <dd className="mt-0.5 text-sm font-medium">{protocolLabel(d)}</dd>
+          </div>
         )}
       </dl>
-      <div className="border-t px-5 py-3 text-[13px] leading-normal text-muted-foreground">
-        <p>{licenseTerms(d.license)}</p>
-        {d.withheld && <p className="mt-1">This record is reserved for testing machine-learning models; keep it out of training data.</p>}
-        {d.kind === "ground" && <p className="mt-1">Trees below these thresholds were not measured, so counts are only complete above them.</p>}
-      </div>
+      <ul className="flex flex-col gap-1 border-t px-5 py-3 text-[13px] leading-normal text-muted-foreground">
+        {notes.map((n) => <li key={n}>{n}</li>)}
+      </ul>
       <div className="flex items-start gap-3 border-t px-5 py-3">
         <p className="min-w-0 flex-1 text-xs leading-normal text-muted-foreground">
           <span className="font-medium text-foreground">Credit: </span>
@@ -95,6 +74,14 @@ function Restrictions({ d }: { d: Dataset }) {
           {copied === "credit" ? "Copied" : "Copy"}
         </Button>
       </div>
+      <details id="trust" open={trustOpen} onToggle={(e) => setTrustOpen(e.currentTarget.open)} className="group scroll-mt-4 border-t">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm font-medium hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+          <span className="flex-1">Trust checklist</span>
+          <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", trust.badge)}>{trust.label} · {trust.passed}/{trust.total}</span>
+          <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+        </summary>
+        <div className="border-t"><TrustChecklist d={d} /></div>
+      </details>
     </Panel>
   );
 }
@@ -107,7 +94,9 @@ interface Imagery {
 
 const megabytes = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(b / 1e6))} MB`);
 
-function ImageryPanel({ id }: { id: string }) {
+
+/** Links to a mission's large files in the public bucket. The map's layers panel draws the images themselves. */
+function ImageryList({ id }: { id: string }) {
   const [state, setState] = useState<{ id: string; imagery: Imagery | null; failed: boolean }>({ id: "", imagery: null, failed: false });
   useEffect(() => {
     const abort = new AbortController();
@@ -119,40 +108,38 @@ function ImageryPanel({ id }: { id: string }) {
   const current = state.id === id ? state : null;
   const imagery = current?.imagery;
   return (
-    <Panel title="Drone imagery and products">
+    <div className="border-t">
+      <h3 className="px-5 pt-3 pb-1 text-xs font-medium text-muted-foreground">Drone imagery (public bucket, large files)</h3>
       {!current ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">Looking up public imagery…</p>
+        <p className="px-5 pb-3 text-sm text-muted-foreground">Looking up imagery…</p>
       ) : current.failed || imagery?.available === null ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">The imagery bucket could not be reached right now.</p>
+        <p className="px-5 pb-3 text-sm text-muted-foreground">The imagery bucket could not be reached right now.</p>
       ) : !imagery?.available ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">No public imagery was found for this mission.</p>
+        <p className="px-5 pb-3 text-sm text-muted-foreground">No public imagery was found for this mission.</p>
       ) : (
         <>
           <ul>
             {imagery.products.map((p) => (
-              <li key={p.url} className="flex items-center gap-3 border-b border-border/60 px-5 py-2.5 last:border-0">
-                <span className="min-w-0 flex-1 text-sm font-medium">{p.label}</span>
+              <li key={p.url} className="flex items-center gap-3 border-b border-border/60 px-5 py-2 last:border-0">
+                <span className="min-w-0 flex-1 text-sm">{p.label}</span>
                 <span className="text-xs text-muted-foreground tabular-nums">{megabytes(p.bytes)}</span>
-                <Button asChild variant="outline" size="sm" className="h-8 px-3">
+                <Button asChild variant="outline" size="sm" className="h-7 px-2.5">
                   <a href={p.url} target="_blank" rel="noreferrer">Open</a>
                 </Button>
               </li>
             ))}
           </ul>
-          <p className="border-t px-5 py-3 text-xs text-muted-foreground">
-            Linked from the public Open Forest Observatory bucket; these files are large and are not downloaded here.{" "}
-            {imagery.folder && <a href={imagery.folder} target="_blank" rel="noreferrer" className="underline">Browse all mission files</a>}
-          </p>
+          {imagery.folder && <p className="border-t px-5 py-2.5 text-xs"><a href={imagery.folder} target="_blank" rel="noreferrer" className="text-muted-foreground underline">Browse all mission files</a></p>}
         </>
       )}
-    </Panel>
+    </div>
   );
 }
 
 const dayMs = (iso: string) => Date.parse(iso.length === 4 ? `${iso}-07-01` : iso.length === 7 ? `${iso}-15` : iso);
 
 /** One plot's ground survey against every drone flight over it. Ground plots are surveyed once, so this is imagery change over time, not tree growth. */
-function TimelinePanel({ plot, flights }: { plot: GroundPlot; flights: DroneMission[] }) {
+function TimelineBody({ plot, flights }: { plot: GroundPlot; flights: DroneMission[] }) {
   const surveyed = dayMs(plot.date);
   const dated = flights.filter((f) => f.date && !Number.isNaN(dayMs(f.date))).sort((a, b) => dayMs(a.date) - dayMs(b.date));
   const times = [surveyed, ...dated.map((f) => dayMs(f.date))].filter((t) => !Number.isNaN(t));
@@ -172,11 +159,7 @@ function TimelinePanel({ plot, flights }: { plot: GroundPlot; flights: DroneMiss
   };
 
   return (
-    <section id="timeline" className="scroll-mt-4 overflow-hidden rounded-xl border bg-card">
-      <div className="flex min-h-[52px] items-center gap-3 border-b px-5 py-2.5">
-        <h2 className="flex-1 text-[15px] font-semibold">Timeline over this plot</h2>
-        <span className="text-xs text-muted-foreground tabular-nums">{plural(dates.size, "flight date")}</span>
-      </div>
+    <div>
       <div className="px-5 pt-6 pb-2">
         <div className="relative mx-3 h-12" role="img" aria-label={`Ground survey ${formatDate(plot.date)} and drone flights on ${[...dates].map(formatDate).join(", ")}`}>
           <div className="absolute inset-x-0 top-5 h-px bg-border" />
@@ -213,7 +196,7 @@ function TimelinePanel({ plot, flights }: { plot: GroundPlot; flights: DroneMiss
       <p className="border-t px-5 py-3 text-xs text-muted-foreground">
         Each plot was measured on the ground once, so tree growth over time isn&apos;t in this data. Repeat flights let you compare canopy change in the imagery; flights far from the survey date may not match the measured trees.
       </p>
-    </section>
+    </div>
   );
 }
 
@@ -239,11 +222,16 @@ function RecordLink({ r, note }: { r: Dataset; note?: string }) {
   );
 }
 
+type TabKey = "overlap" | "timeline" | "compare" | "pair" | "nearby";
+
 export function DatasetView({ id }: { id: string }) {
   const { catalog, catalogLoading, catalogError, reloadCatalog, collection, toggleCollection, setFocus, dockOpen } = useCatalog();
   const d = catalog.byId(id);
-  const [tab, setTab] = useState<"python" | "json">("python");
+  const [codeTab, setCodeTab] = useState<"python" | "json">("python");
   const [copied, copy] = useCopy();
+  const [trustOpen, setTrustOpen] = useState(false);
+  // #timeline (used by the assistant's "open" action) lands on the timeline tab.
+  const [tab, setTab] = useState<TabKey>(() => (typeof window !== "undefined" && window.location.hash === "#timeline" ? "timeline" : "overlap"));
 
   const nearby = useMemo(() => {
     if (!d || d.lat === null || d.lng === null) return [];
@@ -268,8 +256,9 @@ export function DatasetView({ id }: { id: string }) {
   if (!d) return <p className="p-8">Dataset not found. <Link href="/data/catalog" className="underline">Return to catalog</Link></p>;
   const files = datasetFiles(d);
   const related = d.overlaps.map((x) => catalog.byId(x)).filter((r): r is Dataset => !!r);
+  const flights = related.filter((r): r is DroneMission => r.kind === "drone");
   const inCol = collection.includes(d.id);
-  const code = tab === "python" ? pythonFor(d) : datasetFileUrl(d.id, "metadata.json");
+  const code = codeTab === "python" ? pythonFor(d) : datasetFileUrl(d.id, "metadata.json");
   const kmLabel = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m away` : `${km.toFixed(1)} km away`);
   // Many sites have a high straight-down flight and a low angled one a few metres apart.
   const companions = new Set(companionFlights(d, catalog).map((m) => m.id));
@@ -288,179 +277,177 @@ export function DatasetView({ id }: { id: string }) {
           { k: "Plot area", v: areaLabel(d) },
           { k: "Smallest tree", v: protocolLabel(d) },
         ];
+  const subtitle = [d.site, d.kind === "drone" ? [d.aircraft, d.cameraPitch === null ? null : `${d.oblique ? "oblique" : "nadir"} ${d.cameraPitch}°`].filter(Boolean).join(", ") : d.species].filter(Boolean).join(" · ");
+
+  const tabs: { key: TabKey; label: string; count?: number }[] = [
+    { key: "overlap", label: d.kind === "drone" ? "Plots inside" : "Missions over it", count: related.length },
+    ...(d.kind === "ground" && flights.length ? [{ key: "timeline" as const, label: "Timeline" }] : []),
+    ...(related.some((r) => r.kind !== d.kind) ? [{ key: "compare" as const, label: "Compare" }] : []),
+    ...(companions.size ? [{ key: "pair" as const, label: "Paired flights" }] : []),
+    ...(nearby.length ? [{ key: "nearby" as const, label: "Nearby", count: nearby.length }] : []),
+  ];
+  const active = tabs.some((t) => t.key === tab) ? tab : tabs[0].key;
+  const openTrust = () => {
+    setTrustOpen(true);
+    requestAnimationFrame(() => document.getElementById("trust")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  };
 
   return (
     <div className="flex h-[calc(100dvh-var(--nav-h))] min-h-0">
-     <div className="min-w-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-3 px-5 pt-4">
-        <nav aria-label="Breadcrumb" className="flex flex-1 flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
-          <Link href="/data" className="text-foreground hover:underline">
-            Data
-          </Link>
-          <ChevronRightIcon className="size-3.5" aria-hidden />
-          <Link href="/data/catalog" className="text-foreground hover:underline">
-            All datasets
-          </Link>
-          <ChevronRightIcon className="size-3.5" aria-hidden />
-          <span aria-current="page" className="tabular-nums">
-            {d.id}
-          </span>
-        </nav>
-        <CatalogSwitcher />
-      </div>
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-3 px-5 pt-4">
+          <nav aria-label="Breadcrumb" className="flex flex-1 flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+            <Link href="/data" className="text-foreground hover:underline">Data</Link>
+            <ChevronRightIcon className="size-3.5" aria-hidden />
+            <Link href="/data/catalog" className="text-foreground hover:underline">All datasets</Link>
+            <ChevronRightIcon className="size-3.5" aria-hidden />
+            <span aria-current="page" className="tabular-nums">{d.id}</span>
+          </nav>
+          <CatalogSwitcher />
+        </div>
 
-      <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-5 pt-6 pb-20">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <KindBadge kind={d.kind} long />
-              <TrustBadge d={d} />
+        <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-5 pt-6 pb-20">
+          <header className="flex flex-wrap items-end justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <KindBadge kind={d.kind} long />
+                <TrustBadge d={d} onOpen={openTrust} />
+              </div>
+              <h1 className="text-[clamp(22px,3vw,28px)] leading-tight font-semibold tracking-[-0.02em] [overflow-wrap:anywhere]">{d.name}</h1>
+              {subtitle && <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{subtitle}</p>}
             </div>
-            <h1 className="text-[clamp(22px,3vw,28px)] leading-tight font-semibold tracking-[-0.02em] [overflow-wrap:anywhere]">
-              {d.name}
-            </h1>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={inCol ? "secondary" : "default"}
-              className={cn("h-[38px] gap-2 px-3.5", !inCol && "hover:bg-primary-hover")}
-              onClick={() => toggleCollection(d.id)}
-              aria-pressed={inCol}
-            >
-              {inCol ? <CheckIcon className="size-[15px]" /> : <PlusIcon className="size-[15px]" />}
-              {inCol ? "In collection" : "Add to collection"}
-            </Button>
-            <Button asChild variant="outline" className="h-[38px] gap-2 px-4">
-              <a href={`${API_BASE}/api/catalog/datasets/${d.id}/download`}><DownloadIcon className="size-[15px]" />Download records (ZIP)</a>
-            </Button>
-          </div>
-        </header>
-
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-4">
-          {stats.map((x) => (
-            <div key={x.k} className="bg-card px-5 py-4">
-              <dt className="text-xs text-muted-foreground">{x.k}</dt>
-              <dd className="mt-1 text-lg font-semibold tabular-nums [overflow-wrap:anywhere]">{x.v}</dd>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={inCol ? "secondary" : "default"}
+                className={cn("h-[38px] gap-2 px-3.5", !inCol && "hover:bg-primary-hover")}
+                onClick={() => toggleCollection(d.id)}
+                aria-pressed={inCol}
+              >
+                {inCol ? <CheckIcon className="size-[15px]" /> : <PlusIcon className="size-[15px]" />}
+                {inCol ? "In collection" : "Add to collection"}
+              </Button>
+              <Button asChild variant="outline" className="h-[38px] gap-2 px-4">
+                <a href={`${API_BASE}/api/catalog/datasets/${d.id}/download`}><DownloadIcon className="size-[15px]" />Download (ZIP)</a>
+              </Button>
             </div>
-          ))}
-        </dl>
+          </header>
 
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className="flex min-w-0 flex-col gap-5">
-            <DatasetMapPanel dataset={d} />
+          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-4">
+            {stats.map((x) => (
+              <div key={x.k} className="bg-card px-5 py-4">
+                <dt className="text-xs text-muted-foreground">{x.k}</dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums [overflow-wrap:anywhere]">{x.v}</dd>
+              </div>
+            ))}
+          </dl>
 
-            <ComparePanel d={d} />
-            <SitePanel d={d} />
+          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <div className="flex min-w-0 flex-col gap-5">
+              <DatasetMapPanel dataset={d} />
 
-            {d.kind === "ground" && <TimelinePanel plot={d} flights={related.filter((r): r is DroneMission => r.kind === "drone")} />}
-
-            <Panel title={d.kind === "drone" ? "Ground plots inside this footprint" : "Drone missions covering this plot"}>
-              {related.length === 0 ? (
-                <p className="px-5 py-4 text-sm text-muted-foreground">
-                  {d.kind === "drone" ? "No ground plots fall inside this footprint yet." : "No drone missions cover this plot yet."}
-                </p>
-              ) : (
-                <ul>{related.map((r) => <RecordLink key={r.id} r={r} note={companion(r) ? "Companion flight" : undefined} />)}</ul>
-              )}
-              <p className="border-t px-5 py-3 text-xs text-muted-foreground">
-                Plots can sit up to about 10 m off the imagery because of GPS error, so records within 10 m count as overlapping.
-              </p>
-            </Panel>
-
-            <Panel title={`Nearby datasets (within ${NEARBY_KM} km)`}>
-              {nearby.length === 0 ? (
-                <p className="px-5 py-4 text-sm text-muted-foreground">Nothing else within {NEARBY_KM} km.</p>
-              ) : (
-                <ul>
-                  {nearby.map(({ x, km }) => (
-                    <RecordLink key={x.id} r={x} note={[kmLabel(km), companion(x) ? "Companion flight" : ""].filter(Boolean).join(" · ")} />
-                  ))}
-                </ul>
-              )}
-            </Panel>
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-5">
-            <TrustPanel d={d} />
-            <Restrictions d={d} />
-
-            <Panel title="Details">
-              <dl className="grid gap-x-5 gap-y-3.5 p-5 [grid-template-columns:repeat(auto-fill,minmax(130px,1fr))]">
-                {details(d).map((x) => (
-                  <div key={x.k}>
-                    <dt className="text-xs text-muted-foreground">{x.k}</dt>
-                    <dd className="mt-0.5 text-sm font-medium tabular-nums">{x.v}</dd>
-                  </div>
-                ))}
-              </dl>
-            </Panel>
-
-            {d.kind === "drone" && <ImageryPanel id={d.id} />}
-
-            <Panel title="Files">
-              <ul>
-                {files.map((f) => (
-                  <li key={f.name} className="flex items-center gap-3 border-b border-border/60 px-5 py-3 last:border-0">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium">{f.name}</div>
-                      <div className="mt-px flex gap-2.5 text-xs text-muted-foreground tabular-nums">
-                        <span>{f.format}</span>
-                      </div>
-                    </div>
-                    <Button asChild variant="outline" size="sm" className="h-8 px-3" aria-label={`Download ${f.name}`}>
-                      <a href={f.url}>Download</a>
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </Panel>
-
-            <Panel
-              title="Access with code"
-              action={
-                <div role="tablist" className="grid grid-cols-2 rounded-lg bg-muted p-[3px]">
-                  {(
-                    [
-                      ["python", "Python"],
-                      ["json", "Metadata URL"],
-                    ] as const
-                  ).map(([k, label]) => (
+              <section id="timeline" className="scroll-mt-4 overflow-hidden rounded-xl border bg-card">
+                <div role="tablist" aria-label="Related records and context" className="flex overflow-x-auto border-b px-2">
+                  {tabs.map((t) => (
                     <button
-                      key={k}
+                      key={t.key}
+                      type="button"
                       role="tab"
-                      aria-selected={tab === k}
-                      onClick={() => setTab(k)}
+                      aria-selected={active === t.key}
+                      onClick={() => setTab(t.key)}
                       className={cn(
-                        "h-[26px] rounded-md px-2.5 text-[13px] font-medium",
-                        tab === k
-                          ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.1)] dark:bg-card"
-                          : "text-muted-foreground hover:text-foreground",
+                        "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-3 text-[13px] font-medium",
+                        active === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {label}
+                      {t.label}
+                      {t.count !== undefined && <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums">{t.count}</span>}
                     </button>
                   ))}
                 </div>
-              }
-            >
-              <pre className="bg-surface px-5 py-4 font-mono text-[12.5px] leading-[1.65] whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {code}
-              </pre>
-              <div className="flex justify-end border-t px-5 py-2.5">
-                <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => copy(code, "code")}>
-                  {copied === "code" ? "Copied" : "Copy"}
-                </Button>
-              </div>
-            </Panel>
+                <div role="tabpanel">
+                  {active === "overlap" && (
+                    <>
+                      {related.length === 0 ? (
+                        <p className="px-5 py-4 text-sm text-muted-foreground">
+                          {d.kind === "drone" ? "No ground plots fall inside this footprint yet." : "No drone missions cover this plot yet."}
+                        </p>
+                      ) : (
+                        <ul>{related.map((r) => <RecordLink key={r.id} r={r} note={companion(r) ? "Companion flight" : undefined} />)}</ul>
+                      )}
+                      <p className="border-t px-5 py-3 text-xs text-muted-foreground">
+                        Plots can sit up to about 10 m off the imagery because of GPS error, so records within 10 m count as overlapping.
+                      </p>
+                    </>
+                  )}
+                  {active === "timeline" && d.kind === "ground" && <TimelineBody plot={d} flights={flights} />}
+                  {active === "compare" && <ComparePanel d={d} bare />}
+                  {active === "pair" && <SitePanel d={d} bare />}
+                  {active === "nearby" && (
+                    <ul>
+                      {nearby.map(({ x, km }) => (
+                        <RecordLink key={x.id} r={x} note={[kmLabel(km), companion(x) ? "Companion flight" : ""].filter(Boolean).join(" · ")} />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-5">
+              <UsePanel d={d} trustOpen={trustOpen} setTrustOpen={setTrustOpen} />
+
+              <Panel title="Downloads and access">
+                <ul>
+                  {files.map((f) => (
+                    <li key={f.name} className="flex items-center gap-3 border-b border-border/60 px-5 py-2.5 last:border-0">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium">{f.name}</div>
+                        <div className="text-xs text-muted-foreground">{f.format}</div>
+                      </div>
+                      <Button asChild variant="outline" size="sm" className="h-8 px-3" aria-label={`Download ${f.name}`}>
+                        <a href={f.url}>Download</a>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                {d.kind === "drone" && <ImageryList id={d.id} />}
+                <details className="group border-t">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm font-medium hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+                    <span className="flex-1">Access with code</span>
+                    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+                  </summary>
+                  <div className="border-t">
+                    <div role="tablist" className="flex gap-1 px-5 pt-3">
+                      {([["python", "Python"], ["json", "Metadata URL"]] as const).map(([k, label]) => (
+                        <button
+                          key={k}
+                          role="tab"
+                          aria-selected={codeTab === k}
+                          onClick={() => setCodeTab(k)}
+                          className={cn("rounded-md px-2.5 py-1 text-[13px] font-medium", codeTab === k ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground")}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <pre className="mt-3 bg-surface px-5 py-4 font-mono text-[12.5px] leading-[1.65] whitespace-pre-wrap [overflow-wrap:anywhere]">{code}</pre>
+                    <div className="flex justify-end border-t px-5 py-2.5">
+                      <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => copy(code, "code")}>
+                        {copied === "code" ? "Copied" : "Copy"}
+                      </Button>
+                    </div>
+                  </div>
+                </details>
+              </Panel>
+            </div>
           </div>
         </div>
       </div>
-     </div>
-     {dockOpen && (
-       <div className="max-md:fixed max-md:inset-x-0 max-md:top-[var(--nav-h)] max-md:bottom-0 max-md:z-[1080] md:flex md:shrink-0">
-         <AssistantDock />
-       </div>
-     )}
+      {dockOpen && (
+        <div className="max-md:fixed max-md:inset-x-0 max-md:top-[var(--nav-h)] max-md:bottom-0 max-md:z-[1080] md:flex md:shrink-0">
+          <AssistantDock />
+        </div>
+      )}
     </div>
   );
 }

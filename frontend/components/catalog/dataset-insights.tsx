@@ -17,52 +17,57 @@ const LEVEL: Record<TrustLevel, { label: string; badge: string }> = {
   low: { label: "Low trust", badge: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200" },
 };
 
-export function TrustBadge({ d }: { d: Dataset }) {
+export function TrustBadge({ d, onOpen }: { d: Dataset; onOpen: () => void }) {
   const { catalog } = useCatalog();
   const t = trustFor(d, catalog);
   return (
-    <a
-      href="#trust"
-      title={`${t.passed} of ${t.total} checks pass. See the checklist.`}
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`${t.passed} of ${t.total} checks pass. Open the checklist.`}
       className={cn("inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap", LEVEL[t.level].badge)}
     >
       {LEVEL[t.level].label}
       <span className="tabular-nums opacity-80">{t.passed}/{t.total}</span>
-    </a>
+    </button>
   );
 }
 
-export function TrustPanel({ d }: { d: Dataset }) {
+/** The checks behind the trust badge; it sits collapsed inside the data-use panel. */
+export function TrustChecklist({ d }: { d: Dataset }) {
   const { catalog } = useCatalog();
   const t = trustFor(d, catalog);
   return (
-    <section id="trust" className="scroll-mt-4">
-      <Panel title="Trust checklist" action={<span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", LEVEL[t.level].badge)}>{LEVEL[t.level].label} · {t.passed}/{t.total}</span>}>
-        <p className="border-b px-5 py-3 text-[13px] leading-normal text-muted-foreground">
-          {d.kind === "ground"
-            ? "How safely can you treat this plot as ground truth for the drone imagery over it? Each line is one yes/no check."
-            : "How safely can you check this flight against measured trees on the ground? Each line is one yes/no check."}
-        </p>
-        <ul>
-          {t.checks.map((c) => (
-            <li key={c.label} className="flex items-start gap-2.5 border-b border-border/60 px-5 py-2.5 text-sm last:border-0">
-              {c.ok === true ? <CheckIcon className="mt-0.5 size-4 shrink-0 text-green-700 dark:text-green-400" aria-label="Passes" />
-                : c.ok === false ? <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" aria-label="Does not pass" />
-                : <CircleHelpIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Unknown" />}
-              <span className="min-w-0">
-                <span className="block font-medium">{c.label}</span>
-                <span className="block text-xs text-muted-foreground">{c.detail}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="border-t px-5 py-3 text-xs text-muted-foreground">
-          A checklist of how well this record can be used as ground truth or matched to its counterpart. It is not a quality score from the source: high means most checks pass.
-        </p>
-      </Panel>
-    </section>
+    <div>
+      <p className="px-5 py-3 text-[13px] leading-normal text-muted-foreground">
+        {d.kind === "ground"
+          ? "How safely can you treat this plot as ground truth for the drone imagery over it? Each line is one yes/no check."
+          : "How safely can you check this flight against measured trees on the ground? Each line is one yes/no check."}
+      </p>
+      <ul className="border-t">
+        {t.checks.map((c) => (
+          <li key={c.label} className="flex items-start gap-2.5 border-b border-border/60 px-5 py-2.5 text-sm last:border-0">
+            {c.ok === true ? <CheckIcon className="mt-0.5 size-4 shrink-0 text-green-700 dark:text-green-400" aria-label="Passes" />
+              : c.ok === false ? <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" aria-label="Does not pass" />
+              : <CircleHelpIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Unknown" />}
+            <span className="min-w-0">
+              <span className="block font-medium">{c.label}</span>
+              <span className="block text-xs text-muted-foreground">{c.detail}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="border-t px-5 py-3 text-xs text-muted-foreground">
+        A checklist, not a quality score from the source: the badge shows how many checks pass.
+      </p>
+    </div>
   );
 }
+
+export const trustSummary = (d: Dataset, catalog: Parameters<typeof trustFor>[1]) => {
+  const t = trustFor(d, catalog);
+  return { ...t, label: LEVEL[t.level].label, badge: LEVEL[t.level].badge };
+};
 
 const dayMs = (iso: string) => Date.parse(iso.length === 4 ? `${iso}-07-01` : iso.length === 7 ? `${iso}-15` : iso);
 const YEAR = 365.25 * 864e5;
@@ -78,7 +83,7 @@ function Row({ k, a, b, note }: { k: string; a: React.ReactNode; b: React.ReactN
 }
 
 /** A ground plot next to one of the drone missions over it, with the differences that matter when using them together. */
-export function ComparePanel({ d }: { d: Dataset }) {
+export function ComparePanel({ d, bare }: { d: Dataset; bare?: boolean }) {
   const { catalog } = useCatalog();
   const others = useMemo(() => d.overlaps.map((id) => catalog.byId(id)).filter((x): x is Dataset => !!x && x.kind !== d.kind), [catalog, d]);
   const [chosen, setChosen] = useState<string | null>(null);
@@ -109,6 +114,7 @@ export function ComparePanel({ d }: { d: Dataset }) {
 
   return (
     <Panel
+      bare={bare}
       title="Plot and mission side by side"
       action={others.length > 1 ? (
         <select aria-label={`Compare with ${d.kind === "ground" ? "mission" : "plot"}`} value={other.id} onChange={(e) => setChosen(e.target.value)} className="h-8 max-w-[220px] rounded-md border bg-background px-1.5 text-xs">
@@ -146,14 +152,14 @@ export function ComparePanel({ d }: { d: Dataset }) {
 }
 
 /** The high-altitude straight-down flight and the low-altitude angled flight over the same site, shown as one site. */
-export function SitePanel({ d }: { d: Dataset }) {
+export function SitePanel({ d, bare }: { d: Dataset; bare?: boolean }) {
   const { catalog } = useCatalog();
   const pair = useMemo(() => companionFlights(d, catalog), [catalog, d]);
   if (d.kind !== "drone" || !pair.length) return null;
   const flights = [d, ...pair].sort((a, b) => (b.altitudeM ?? 0) - (a.altitudeM ?? 0));
 
   return (
-    <Panel title="Paired flights at this site" action={<span className="text-xs text-muted-foreground">{plural(flights.length, "flight")}, same day</span>}>
+    <Panel bare={bare} title="Paired flights at this site" action={<span className="text-xs text-muted-foreground">{plural(flights.length, "flight")}, same day</span>}>
       <div className="grid gap-px bg-border sm:grid-cols-2">
         {flights.map((f) => (
           <div key={f.id} className={cn("flex flex-col gap-2 bg-card px-5 py-4", f.id === d.id && "bg-selected")}>
